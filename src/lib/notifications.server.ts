@@ -142,7 +142,40 @@ interface ApptRecord {
     whatsapp: string | null;
     phone: string | null;
   } | null;
-  professional: { name: string | null; email: string | null; phone: string | null } | null;
+  professional: {
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+    user_id: string | null;
+  } | null;
+}
+
+/** Insert a bell notification for one user. Best-effort: never throws. */
+async function notifyInApp(row: {
+  clinicId: string;
+  recipientId: string;
+  type:
+    | "appointment_reminder"
+    | "appointment_confirmed"
+    | "appointment_cancelled"
+    | "appointment_no_show"
+    | "negotiation_update"
+    | "system";
+  title: string;
+  body?: string;
+  link?: string;
+  appointmentId?: string;
+}) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  await supabaseAdmin.from("app_notifications").insert({
+    clinic_id: row.clinicId,
+    recipient_id: row.recipientId,
+    type: row.type,
+    title: row.title,
+    body: row.body ?? null,
+    link: row.link ?? null,
+    appointment_id: row.appointmentId ?? null,
+  });
 }
 
 function buildMessages(appt: ApptRecord, kind: Kind) {
@@ -178,7 +211,7 @@ export async function dispatchAppointmentNotifications(
   const { data: appt } = await supabaseAdmin
     .from("appointments")
     .select(
-      "id, clinic_id, starts_at, clinic:clinics(name), patient:patients(full_name, email, whatsapp, phone), professional:professionals(name, email, phone)",
+      "id, clinic_id, starts_at, clinic:clinics(name), patient:patients(full_name, email, whatsapp, phone), professional:professionals(name, email, phone, user_id)",
     )
     .eq("id", appointmentId)
     .maybeSingle();
@@ -314,8 +347,25 @@ export async function dispatchAppointmentNotifications(
     }
   }
 
+  // ---- Professional (collaborator): in-app bell, independent of whether
+  // WhatsApp/e-mail are configured — this always works since it's just a
+  // DB row, not an external send.
+  if (opts.notifyProfessional && record.professional?.user_id) {
+    await notifyInApp({
+      clinicId: record.clinic_id,
+      recipientId: record.professional.user_id,
+      type: kind === "reminder" ? "appointment_reminder" : "appointment_confirmed",
+      title: kind === "reminder" ? "Consulta se aproximando" : "Nova consulta agendada",
+      body: msg.professional || msg.patient,
+      link: "/agenda",
+      appointmentId: record.id,
+    });
+  }
+
   if (logs.length) {
     await supabaseAdmin.from("notification_log").insert(logs);
   }
   return counters;
 }
+
+export { notifyInApp };

@@ -7,10 +7,15 @@ import { EmptyState } from "@/components/empty-state";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MessageCircle, ExternalLink, Info } from "lucide-react";
+import { MessageCircle, ExternalLink, Info, QrCode } from "lucide-react";
 import { useMemo, useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { WA_STATUS } from "@/lib/format";
+import { WhatsAppConnectDialog } from "@/components/whatsapp-connect-dialog";
 
-export const Route = createFileRoute("/_authenticated/atendimentos")({ component: AtendimentosPage });
+export const Route = createFileRoute("/_authenticated/atendimentos")({
+  component: AtendimentosPage,
+});
 
 function onlyDigits(s: string | null | undefined) {
   return (s ?? "").replace(/\D+/g, "");
@@ -26,7 +31,7 @@ function AtendimentosPage() {
   const { clinic } = useApp();
   const [search, setSearch] = useState("");
   const [template, setTemplate] = useState(
-    "Olá! Aqui é da clínica. Tudo bem? Podemos confirmar seu atendimento?"
+    "Olá! Aqui é da clínica. Tudo bem? Podemos confirmar seu atendimento?",
   );
 
   const { data: patients } = useQuery({
@@ -47,13 +52,40 @@ function AtendimentosPage() {
     const withPhone = (patients ?? []).filter((p) => onlyDigits(p.phone).length >= 10);
     if (!q) return withPhone;
     return withPhone.filter(
-      (p) => p.full_name.toLowerCase().includes(q) || onlyDigits(p.phone).includes(onlyDigits(q))
+      (p) => p.full_name.toLowerCase().includes(q) || onlyDigits(p.phone).includes(onlyDigits(q)),
     );
   }, [patients, search]);
 
+  const { data: waConn } = useQuery({
+    queryKey: ["wa-conn", clinic?.id],
+    enabled: !!clinic?.id,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("whatsapp_connections")
+        .select("*")
+        .eq("clinic_id", clinic!.id)
+        .maybeSingle();
+      return data;
+    },
+  });
+  const [waDialogOpen, setWaDialogOpen] = useState(false);
+  const waStatus = WA_STATUS[waConn?.status ?? "disconnected"];
+
   return (
     <div>
-      <PageHeader title="Atendimentos" description="Abra conversas de WhatsApp com seus pacientes em um clique." />
+      <PageHeader
+        title="Atendimentos"
+        description="Abra conversas de WhatsApp com seus pacientes em um clique."
+        actions={
+          <Button variant="outline" onClick={() => setWaDialogOpen(true)}>
+            <QrCode className="size-4" />
+            {waConn?.status === "connected" ? "WhatsApp conectado" : "Conectar WhatsApp"}
+            <Badge className={`${waStatus.className} ml-1`}>{waStatus.label}</Badge>
+          </Button>
+        }
+      />
+
+      <WhatsAppConnectDialog open={waDialogOpen} onOpenChange={setWaDialogOpen} />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-1">
@@ -65,12 +97,13 @@ function AtendimentosPage() {
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-muted-foreground">
             <p>
-              Ao clicar em <strong>Abrir WhatsApp</strong>, o WhatsApp Web (ou app do celular) abre já com o número
-              do paciente e uma mensagem sugerida.
+              Ao clicar em <strong>Abrir WhatsApp</strong>, o WhatsApp Web (ou app do celular) abre
+              já com o número do paciente e uma mensagem sugerida.
             </p>
             <p>
-              As respostas acontecem no próprio WhatsApp — não voltam para dentro do CRM. Para receber mensagens
-              aqui, seria necessário contratar um provedor pago (Cloud API oficial ou Evolution/Z-API).
+              As respostas acontecem no próprio WhatsApp — não voltam para dentro do CRM. Para
+              receber mensagens aqui, seria necessário contratar um provedor pago (Cloud API oficial
+              ou Evolution/Z-API).
             </p>
             <div className="space-y-2 pt-2">
               <label className="text-xs font-medium text-foreground">Mensagem padrão</label>

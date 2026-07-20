@@ -1373,14 +1373,71 @@ export type Database = {
           },
         ];
       };
+      app_notifications: {
+        Row: {
+          appointment_id: string | null;
+          body: string | null;
+          clinic_id: string;
+          created_at: string;
+          id: string;
+          link: string | null;
+          read_at: string | null;
+          recipient_id: string;
+          title: string;
+          type: Database["public"]["Enums"]["app_notification_type"];
+        };
+        Insert: {
+          appointment_id?: string | null;
+          body?: string | null;
+          clinic_id: string;
+          created_at?: string;
+          id?: string;
+          link?: string | null;
+          read_at?: string | null;
+          recipient_id: string;
+          title: string;
+          type?: Database["public"]["Enums"]["app_notification_type"];
+        };
+        Update: {
+          appointment_id?: string | null;
+          body?: string | null;
+          clinic_id?: string;
+          created_at?: string;
+          id?: string;
+          link?: string | null;
+          read_at?: string | null;
+          recipient_id?: string;
+          title?: string;
+          type?: Database["public"]["Enums"]["app_notification_type"];
+        };
+        Relationships: [
+          {
+            foreignKeyName: "app_notifications_clinic_id_fkey";
+            columns: ["clinic_id"];
+            isOneToOne: false;
+            referencedRelation: "clinics";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "app_notifications_appointment_id_fkey";
+            columns: ["appointment_id"];
+            isOneToOne: false;
+            referencedRelation: "appointments";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       whatsapp_connections: {
         Row: {
           clinic_id: string;
           created_at: string;
           id: string;
+          instance_name: string | null;
           last_connected_at: string | null;
           phone_number: string | null;
           provider: string | null;
+          qr_code: string | null;
+          qr_expires_at: string | null;
           status: Database["public"]["Enums"]["whatsapp_status"];
           updated_at: string;
         };
@@ -1388,9 +1445,12 @@ export type Database = {
           clinic_id: string;
           created_at?: string;
           id?: string;
+          instance_name?: string | null;
           last_connected_at?: string | null;
           phone_number?: string | null;
           provider?: string | null;
+          qr_code?: string | null;
+          qr_expires_at?: string | null;
           status?: Database["public"]["Enums"]["whatsapp_status"];
           updated_at?: string;
         };
@@ -1398,9 +1458,12 @@ export type Database = {
           clinic_id?: string;
           created_at?: string;
           id?: string;
+          instance_name?: string | null;
           last_connected_at?: string | null;
           phone_number?: string | null;
           provider?: string | null;
+          qr_code?: string | null;
+          qr_expires_at?: string | null;
           status?: Database["public"]["Enums"]["whatsapp_status"];
           updated_at?: string;
         };
@@ -1571,6 +1634,13 @@ export type Database = {
         | "cancelled"
         | "no_show";
       clinic_type: "medical" | "dental";
+      app_notification_type:
+        | "appointment_reminder"
+        | "appointment_confirmed"
+        | "appointment_cancelled"
+        | "appointment_no_show"
+        | "negotiation_update"
+        | "system";
       financial_status: "pending" | "paid" | "cancelled";
       financial_type: "income" | "expense";
       negotiation_status: "negotiating" | "awaiting" | "accepted" | "rejected" | "expired";

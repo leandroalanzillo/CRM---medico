@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useApp } from "@/lib/app-context";
 import { cn } from "@/lib/utils";
 import { initials, ROLE_LABELS } from "@/lib/format";
+import { NotificationBell } from "@/components/notification-bell";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -124,6 +125,8 @@ export function AppShell({ children }: { children: ReactNode }) {
               {clinic?.type === "dental" ? "Clínica odontológica" : "Clínica médica"}
             </p>
           </div>
+
+          <NotificationBell />
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

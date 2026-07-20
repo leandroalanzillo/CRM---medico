@@ -32,7 +32,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { brl, fmtDate, FINANCIAL_STATUS, isOverdue } from "@/lib/format";
+import { brl, fmtDate, FINANCIAL_STATUS, FINANCIAL_TYPE_LABELS, isOverdue } from "@/lib/format";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Wallet,
   TrendingUp,
@@ -43,6 +45,7 @@ import {
   X,
   Pencil,
   Receipt,
+  FileSpreadsheet,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/financeiro")({ component: FinanceiroPage });
@@ -209,6 +212,49 @@ function FinanceiroPage() {
       .sort((a, b) => a.due_date.localeCompare(b.due_date));
   }, [rows]);
 
+  function exportLedgerCSV() {
+    if (rows.length === 0) return toast.error("Nenhum lançamento para exportar.");
+    const esc = (v: unknown) => {
+      const s = v === null || v === undefined ? "" : String(v);
+      return /["\n;,]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const headers = [
+      "Data de vencimento",
+      "Data de pagamento",
+      "Tipo",
+      "Categoria",
+      "Descrição",
+      "Paciente/Profissional",
+      "Forma de pagamento",
+      "Status",
+      "Valor (R$)",
+    ];
+    const body = rows.map((r) =>
+      [
+        r.due_date,
+        r.paid_at ? r.paid_at.slice(0, 10) : "",
+        FINANCIAL_TYPE_LABELS[r.type],
+        r.category?.name ?? "",
+        r.description,
+        r.patient?.full_name ?? r.professional?.name ?? "",
+        r.payment_method ?? "",
+        FINANCIAL_STATUS[r.status]?.label ?? r.status,
+        Number(r.amount).toFixed(2).replace(".", ","),
+      ]
+        .map(esc)
+        .join(";"),
+    );
+    const csv = "\uFEFF" + [headers.join(";"), ...body].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `razao-contabil-${clinic?.name?.replace(/\s+/g, "-").toLowerCase() ?? "clinica"}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Razão contábil exportada.");
+  }
+
   return (
     <div>
       <PageHeader
@@ -216,6 +262,9 @@ function FinanceiroPage() {
         description="Receitas, despesas e fluxo de caixa da clínica."
         actions={
           <>
+            <Button variant="outline" onClick={exportLedgerCSV}>
+              <FileSpreadsheet className="size-4" /> Exportar razão contábil
+            </Button>
             <Button variant="outline" onClick={() => openCreate("expense")}>
               <Plus className="size-4" /> Despesa
             </Button>
@@ -257,6 +306,7 @@ function FinanceiroPage() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="mb-4 flex-wrap">
           <TabsTrigger value="overview">Visão geral</TabsTrigger>
+          <TabsTrigger value="dre">DRE</TabsTrigger>
           <TabsTrigger value="receivable">Contas a receber</TabsTrigger>
           <TabsTrigger value="payable">Contas a pagar</TabsTrigger>
         </TabsList>
@@ -326,6 +376,10 @@ function FinanceiroPage() {
           </div>
         </TabsContent>
 
+        <TabsContent value="dre">
+          <DreView rows={rows} />
+        </TabsContent>
+
         <TabsContent value="receivable">
           <TransactionsTable
             rows={rows.filter((r) => r.type === "income")}
@@ -365,6 +419,118 @@ function FinanceiroPage() {
         transaction={editing}
         defaultType={newType}
       />
+    </div>
+  );
+}
+
+function DreView({ rows }: { rows: TxRow[] }) {
+  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
+
+  const dre = useMemo(() => {
+    // DRE (Demonstrativo de Resultado) uses realized cash — status "paid" —
+    // grouped by category, for the selected competência (month). This is
+    // the view an accountant actually wants: what was *realized*, not what's
+    // scheduled/pending.
+    const inMonth = rows.filter((r) => r.status === "paid" && r.paid_at?.slice(0, 7) === month);
+    const byCategory = (type: "income" | "expense") => {
+      const map = new Map<string, number>();
+      for (const r of inMonth.filter((r) => r.type === type)) {
+        const key = r.category?.name ?? "Sem categoria";
+        map.set(key, (map.get(key) ?? 0) + Number(r.amount));
+      }
+      return [...map.entries()]
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value);
+    };
+    const income = byCategory("income");
+    const expense = byCategory("expense");
+    const totalIncome = income.reduce((s, c) => s + c.value, 0);
+    const totalExpense = expense.reduce((s, c) => s + c.value, 0);
+    return { income, expense, totalIncome, totalExpense, result: totalIncome - totalExpense };
+  }, [rows, month]);
+
+  return (
+    <div className="grid gap-4">
+      <div className="flex items-center gap-3">
+        <Label className="text-sm font-normal text-muted-foreground">Competência (mês)</Label>
+        <Input
+          type="month"
+          className="w-44"
+          value={month}
+          onChange={(e) => setMonth(e.target.value)}
+        />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base text-success">Receitas realizadas</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {dre.income.length === 0 ? (
+              <p className="py-4 text-center text-sm text-muted-foreground">
+                Nenhuma receita paga no período.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {dre.income.map((c) => (
+                  <div key={c.name} className="flex items-center justify-between text-sm">
+                    <span>{c.name}</span>
+                    <span className="font-medium">{brl(c.value)}</span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between border-t pt-2 text-sm font-semibold">
+                  <span>Total de receitas</span>
+                  <span className="text-success">{brl(dre.totalIncome)}</span>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base text-destructive">Despesas realizadas</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {dre.expense.length === 0 ? (
+              <p className="py-4 text-center text-sm text-muted-foreground">
+                Nenhuma despesa paga no período.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {dre.expense.map((c) => (
+                  <div key={c.name} className="flex items-center justify-between text-sm">
+                    <span>{c.name}</span>
+                    <span className="font-medium">{brl(c.value)}</span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between border-t pt-2 text-sm font-semibold">
+                  <span>Total de despesas</span>
+                  <span className="text-destructive">{brl(dre.totalExpense)}</span>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardContent className="flex items-center justify-between p-4">
+          <p className="font-semibold">Resultado líquido do período</p>
+          <p
+            className={`text-xl font-bold ${dre.result >= 0 ? "text-success" : "text-destructive"}`}
+          >
+            {brl(dre.result)}
+          </p>
+        </CardContent>
+      </Card>
+
+      <p className="text-xs text-muted-foreground">
+        Regime de caixa: considera lançamentos com status "Pago" cuja data de pagamento está dentro
+        do mês selecionado. Para regime de competência (por vencimento), use o CSV exportado e
+        ajuste no seu sistema contábil.
+      </p>
     </div>
   );
 }
