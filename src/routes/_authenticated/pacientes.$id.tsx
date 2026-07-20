@@ -47,6 +47,7 @@ import {
   Trash2,
   Upload,
   CalendarPlus,
+  CalendarClock,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/pacientes/$id")({
@@ -106,6 +107,16 @@ function PatientProfile() {
     },
   });
 
+  // Drives the "próxima consulta" marker in the header — the whole reason
+  // a patient shows up (or doesn't) in Agenda/Planilha is whether they have
+  // one of these, so surfacing it here removes the guesswork.
+  const now = Date.now();
+  const upcoming = (appointments ?? [])
+    .filter((a) => a.status !== "cancelled" && new Date(a.starts_at).getTime() >= now)
+    .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
+  const nextAppointment = upcoming[0] ?? null;
+  const mostRecentPast = (appointments ?? []).find((a) => a.status !== "cancelled") ?? null;
+
   const { data: negotiations } = useQuery({
     queryKey: ["patient-negs", id],
     queryFn: async () => {
@@ -153,6 +164,25 @@ function PatientProfile() {
               {patient.phone} {patient.professional && <>· {patient.professional.name}</>}
               {patient.source && <> · Origem: {patient.source}</>}
             </p>
+            {nextAppointment ? (
+              <Badge className="mt-2 gap-1 bg-success/15 text-success hover:bg-success/15">
+                <CalendarClock className="size-3" />
+                Próxima consulta: {fmtDateTime(nextAppointment.starts_at)}
+                {nextAppointment.professional?.name
+                  ? ` · ${nextAppointment.professional.name}`
+                  : ""}
+              </Badge>
+            ) : mostRecentPast ? (
+              <Badge variant="outline" className="mt-2 gap-1 text-muted-foreground">
+                <CalendarClock className="size-3" />
+                Sem consulta futura marcada — última em {fmtDateTime(mostRecentPast.starts_at)}
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="mt-2 gap-1 text-warning">
+                <CalendarClock className="size-3" />
+                Nenhuma consulta agendada — por isso não aparece na Agenda
+              </Badge>
+            )}
           </div>
           <Button onClick={() => setScheduleOpen(true)}>
             <CalendarPlus className="size-4" /> Agendar consulta

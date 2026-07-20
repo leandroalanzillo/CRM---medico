@@ -45,7 +45,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { fmtDate, initials } from "@/lib/format";
+import { fmtDate, fmtDateTime, initials } from "@/lib/format";
 import {
   Users,
   Plus,
@@ -56,6 +56,7 @@ import {
   UserX,
   UserCheck,
   Trash2,
+  CalendarClock,
 } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -81,6 +82,9 @@ function PatientsPage() {
   const [schedulePrompt, setSchedulePrompt] = useState<string | null>(null);
   const [scheduleFor, setScheduleFor] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["patients", clinic?.id],
@@ -95,6 +99,31 @@ function PatientsPage() {
       return data as PatientRow[];
     },
   });
+
+  // One extra query for the whole clinic (not per-patient) so every card can
+  // show its own "próxima consulta" marker — the reason a patient does or
+  // doesn't show up in Agenda/Planilha, made visible right where people look.
+  const { data: upcomingAppts } = useQuery({
+    queryKey: ["patients-next-appt", clinic?.id],
+    enabled: !!clinic?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("appointments")
+        .select("patient_id, starts_at")
+        .eq("clinic_id", clinic!.id)
+        .neq("status", "cancelled")
+        .gte("starts_at", new Date().toISOString())
+        .order("starts_at", { ascending: true });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const nextApptByPatient = new Map<string, string>();
+  for (const a of upcomingAppts ?? []) {
+    if (a.patient_id && !nextApptByPatient.has(a.patient_id)) {
+      nextApptByPatient.set(a.patient_id, a.starts_at);
+    }
+  }
 
   const filtered = (data ?? [])
     .filter((p) =>
@@ -115,10 +144,81 @@ function PatientsPage() {
   function updateSearch(v: string) {
     setQ(v);
     setPage(1);
+    setSelected(new Set());
   }
   function updateStatus(v: typeof status) {
     setStatus(v);
     setPage(1);
+    setSelected(new Set());
+  }
+
+  function toggleSelected(id: string, checked: boolean) {
+    setSelected((s) => {
+      const next = new Set(s);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+  const allOnPageSelected = paged.length > 0 && paged.every((p) => selected.has(p.id));
+  function toggleSelectAllOnPage(checked: boolean) {
+    setSelected((s) => {
+      const next = new Set(s);
+      for (const p of paged) {
+        if (checked) next.add(p.id);
+        else next.delete(p.id);
+      }
+      return next;
+    });
+  }
+
+  async function bulkDeactivate() {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    const { error } = await supabase.from("patients").update({ active: false }).in("id", ids);
+    if (error) return toast.error("Não foi possível inativar os selecionados.");
+    toast.success(`${ids.length} paciente(s) inativado(s).`);
+    setSelected(new Set());
+    queryClient.invalidateQueries({ queryKey: ["patients", clinic?.id] });
+  }
+
+  async function confirmBulkDelete() {
+    const byId = new Map((data ?? []).map((p) => [p.id, p]));
+    const ids = [...selected];
+    setBulkBusy(true);
+    let deleted = 0,
+      blocked = 0;
+    for (const id of ids) {
+      if (!byId.has(id)) continue;
+      const [{ count: apptCount }, { count: cardCount }] = await Promise.all([
+        supabase
+          .from("appointments")
+          .select("id", { count: "exact", head: true })
+          .eq("patient_id", id),
+        supabase
+          .from("pipeline_cards")
+          .select("id", { count: "exact", head: true })
+          .eq("patient_id", id),
+      ]);
+      if ((apptCount ?? 0) > 0 || (cardCount ?? 0) > 0) {
+        blocked++;
+        continue;
+      }
+      const { error } = await supabase.from("patients").delete().eq("id", id);
+      if (error) blocked++;
+      else deleted++;
+    }
+    setBulkBusy(false);
+    setBulkDeleteOpen(false);
+    setSelected(new Set());
+    if (blocked > 0) {
+      toast.warning(
+        `${deleted} excluído(s). ${blocked} não puderam ser excluídos por terem consultas/negociações vinculadas — use "Inativar" para esses.`,
+      );
+    } else {
+      toast.success(`${deleted} paciente(s) excluído(s).`);
+    }
+    queryClient.invalidateQueries({ queryKey: ["patients", clinic?.id] });
   }
 
   function openEdit(p: Patient, e: React.MouseEvent) {
@@ -218,6 +318,36 @@ function PatientsPage() {
         </Select>
       </div>
 
+      {paged.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border bg-muted/30 px-3 py-2">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="size-4 rounded border-input"
+              checked={allOnPageSelected}
+              onChange={(e) => toggleSelectAllOnPage(e.target.checked)}
+            />
+            Selecionar todos nesta página
+          </label>
+          {selected.size > 0 && (
+            <>
+              <span className="text-sm text-muted-foreground">{selected.size} selecionado(s)</span>
+              <div className="ml-auto flex gap-2">
+                <Button size="sm" variant="outline" onClick={bulkDeactivate}>
+                  <UserX className="size-4" /> Inativar selecionados
+                </Button>
+                <Button size="sm" variant="destructive" onClick={() => setBulkDeleteOpen(true)}>
+                  <Trash2 className="size-4" /> Excluir selecionados
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+                  Limpar
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {isLoading ? (
         <div className="grid gap-3">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -247,6 +377,13 @@ function PatientsPage() {
               <Card
                 className={`flex items-center gap-4 p-4 shadow-soft transition-shadow hover:shadow-card ${p.active === false ? "opacity-60" : ""}`}
               >
+                <input
+                  type="checkbox"
+                  className="size-4 shrink-0 rounded border-input"
+                  checked={selected.has(p.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => toggleSelected(p.id, e.target.checked)}
+                />
                 <Avatar className="size-11">
                   <AvatarFallback className="bg-primary/15 text-primary font-semibold">
                     {initials(p.full_name)}
@@ -275,6 +412,17 @@ function PatientsPage() {
                     )}
                     {p.professional && <span className="ml-2">· {p.professional.name}</span>}
                   </p>
+                  {nextApptByPatient.has(p.id) ? (
+                    <Badge className="mt-1 gap-1 bg-success/15 text-xs text-success hover:bg-success/15">
+                      <CalendarClock className="size-3" />
+                      {fmtDateTime(nextApptByPatient.get(p.id)!)}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="mt-1 gap-1 text-xs text-muted-foreground">
+                      <CalendarClock className="size-3" />
+                      Sem consulta agendada
+                    </Badge>
+                  )}
                 </div>
                 <div className="hidden text-right text-xs text-muted-foreground sm:block">
                   <p>Cadastro</p>
@@ -437,6 +585,28 @@ function PatientsPage() {
             <AlertDialogCancel disabled={deleteBusy}>Cancelar</AlertDialogCancel>
             <AlertDialogAction disabled={deleteBusy} onClick={confirmDelete}>
               {deleteBusy ? "Excluindo..." : "Excluir"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={bulkDeleteOpen}
+        onOpenChange={(v) => !v && !bulkBusy && setBulkDeleteOpen(false)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir {selected.size} paciente(s)?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Ação permanente. Pacientes com consultas ou negociações vinculadas não podem ser
+              excluídos — para esses, use "Inativar" em vez disso. Você verá um resumo do que foi
+              excluído e do que ficou bloqueado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkBusy}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction disabled={bulkBusy} onClick={confirmBulkDelete}>
+              {bulkBusy ? "Excluindo..." : "Excluir selecionados"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

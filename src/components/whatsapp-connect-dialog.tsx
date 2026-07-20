@@ -33,7 +33,7 @@ import { Loader2, QrCode, Unplug, RefreshCw, AlertTriangle } from "lucide-react"
  */
 function friendlyServerError(message: string): string {
   if (message.includes("Missing Supabase environment variable")) {
-    return "Configuração do servidor incompleta: defina SUPABASE_URL e SUPABASE_PUBLISHABLE_KEY (sem prefixo VITE_) nas variáveis de ambiente do projeto no Lovable Cloud — são usadas pelas funções de servidor, separadas das variáveis VITE_ do navegador.";
+    return "Configuração do servidor incompleta: nem SUPABASE_PUBLISHABLE_KEY nem SUPABASE_ANON_KEY estão definidas nas variáveis de ambiente do servidor no Lovable Cloud (Cloud → Secrets). São usadas pelas funções de servidor, separadas das variáveis VITE_ do navegador — confira se o projeto está de fato conectado ao Supabase em Cloud → Secrets.";
   }
   if (message.includes("Evolution API não configurada")) {
     return "Nenhum provedor de WhatsApp configurado ainda: defina EVOLUTION_API_URL e EVOLUTION_API_KEY nas variáveis de ambiente do servidor, apontando para uma instância do Evolution API (self-hosted) já rodando. Sem isso, não existe QR Code para gerar — é diferente do modo gratuito por link (wa.me) usado no restante desta página.";

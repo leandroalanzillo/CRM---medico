@@ -7,7 +7,7 @@ import { EmptyState } from "@/components/empty-state";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MessageCircle, ExternalLink, Info, QrCode } from "lucide-react";
+import { MessageCircle, ExternalLink, Info, QrCode, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { WA_STATUS } from "@/lib/format";
@@ -115,28 +115,47 @@ function AtendimentosPage() {
         <Card className="lg:col-span-2">
           <CardHeader className="gap-2">
             <CardTitle className="text-base">Pacientes com WhatsApp</CardTitle>
-            <Input
-              placeholder="Buscar por nome ou telefone…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="pl-9"
+                placeholder="Buscar paciente por nome ou telefone…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            {search && (
+              <p className="text-xs text-muted-foreground">
+                {filtered.length} paciente{filtered.length === 1 ? "" : "s"} encontrado
+                {filtered.length === 1 ? "" : "s"} — clique em um para abrir o WhatsApp.
+              </p>
+            )}
           </CardHeader>
           <CardContent>
             {filtered.length > 0 ? (
               <div className="divide-y">
                 {filtered.map((p) => (
-                  <div key={p.id} className="flex items-center justify-between gap-3 py-3">
+                  <a
+                    key={p.id}
+                    href={waLink(p.phone ?? "", template)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-between gap-3 py-3 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none"
+                  >
                     <div className="min-w-0">
                       <p className="truncate font-medium">{p.full_name}</p>
                       <p className="text-sm text-muted-foreground">{p.phone}</p>
                     </div>
-                    <Button asChild size="sm" variant="outline">
-                      <a href={waLink(p.phone ?? "", template)} target="_blank" rel="noreferrer">
-                        <MessageCircle className="size-4" /> Abrir WhatsApp
-                        <ExternalLink className="size-3 opacity-60" />
-                      </a>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      tabIndex={-1}
+                      className="pointer-events-none"
+                    >
+                      <MessageCircle className="size-4" /> Abrir WhatsApp
+                      <ExternalLink className="size-3 opacity-60" />
                     </Button>
-                  </div>
+                  </a>
                 ))}
               </div>
             ) : (
