@@ -21,6 +21,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -58,11 +66,14 @@ export const Route = createFileRoute("/_authenticated/pacientes/")({
 
 type PatientRow = Patient & { professional: { name: string } | null };
 
+const PAGE_SIZE = 10;
+
 function PatientsPage() {
   const { clinic } = useApp();
   const queryClient = useQueryClient();
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<"all" | "active" | "inactive">("active");
+  const [page, setPage] = useState(1);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Patient | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PatientRow | null>(null);
@@ -91,6 +102,21 @@ function PatientsPage() {
         v?.toLowerCase().includes(q.toLowerCase()),
       ),
     );
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paged = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  // Any change to search/status/status can shrink the result set below the
+  // current page — snap back to page 1 instead of showing an empty page.
+  function updateSearch(v: string) {
+    setQ(v);
+    setPage(1);
+  }
+  function updateStatus(v: typeof status) {
+    setStatus(v);
+    setPage(1);
+  }
 
   function openEdit(p: Patient, e: React.MouseEvent) {
     e.preventDefault();
@@ -174,10 +200,10 @@ function PatientsPage() {
             className="pl-9"
             placeholder="Buscar por nome, telefone, CPF..."
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => updateSearch(e.target.value)}
           />
         </div>
-        <Select value={status} onValueChange={(v) => setStatus(v as typeof status)}>
+        <Select value={status} onValueChange={(v) => updateStatus(v as typeof status)}>
           <SelectTrigger className="w-40">
             <SelectValue />
           </SelectTrigger>
@@ -213,7 +239,7 @@ function PatientsPage() {
         />
       ) : (
         <div className="grid gap-3">
-          {filtered.map((p) => (
+          {paged.map((p) => (
             <Link key={p.id} to="/pacientes/$id" params={{ id: p.id }}>
               <Card
                 className={`flex items-center gap-4 p-4 shadow-soft transition-shadow hover:shadow-card ${p.active === false ? "opacity-60" : ""}`}
@@ -283,6 +309,73 @@ function PatientsPage() {
               </Card>
             </Link>
           ))}
+        </div>
+      )}
+
+      {!isLoading && filtered.length > 0 && (
+        <div className="mt-4 flex flex-col items-center justify-between gap-3 sm:flex-row">
+          <p className="text-sm text-muted-foreground">
+            Mostrando {(safePage - 1) * PAGE_SIZE + 1}–
+            {Math.min(safePage * PAGE_SIZE, filtered.length)} de {filtered.length} paciente
+            {filtered.length === 1 ? "" : "s"}
+          </p>
+          {totalPages > 1 && (
+            <Pagination className="mx-0 w-auto">
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    href="#"
+                    aria-disabled={safePage === 1}
+                    className={safePage === 1 ? "pointer-events-none opacity-50" : ""}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setPage((p) => Math.max(1, p - 1));
+                    }}
+                  />
+                </PaginationItem>
+                {Array.from({ length: totalPages }).map((_, i) => {
+                  const n = i + 1;
+                  // Keep the pager compact on long lists: always show first,
+                  // last, current, and its immediate neighbors.
+                  if (totalPages > 7 && n !== 1 && n !== totalPages && Math.abs(n - safePage) > 1) {
+                    if (n === 2 || n === totalPages - 1) {
+                      return (
+                        <PaginationItem key={n}>
+                          <span className="px-2 text-muted-foreground">…</span>
+                        </PaginationItem>
+                      );
+                    }
+                    return null;
+                  }
+                  return (
+                    <PaginationItem key={n}>
+                      <PaginationLink
+                        href="#"
+                        isActive={n === safePage}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setPage(n);
+                        }}
+                      >
+                        {n}
+                      </PaginationLink>
+                    </PaginationItem>
+                  );
+                })}
+                <PaginationItem>
+                  <PaginationNext
+                    href="#"
+                    aria-disabled={safePage === totalPages}
+                    className={safePage === totalPages ? "pointer-events-none opacity-50" : ""}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setPage((p) => Math.min(totalPages, p + 1));
+                    }}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          )}
         </div>
       )}
 
