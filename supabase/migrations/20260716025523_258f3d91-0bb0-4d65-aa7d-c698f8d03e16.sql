@@ -4,59 +4,51 @@
 -- (see src/routes/auth.tsx -> toEmail()). These are internal-only
 -- addresses, never sent real mail, just Supabase Auth's user key.
 --
--- IMPORTANT: creating auth.users/auth.identities rows directly via SQL
--- is the common pattern for local/test seeding, but it bypasses
--- GoTrue's own validation and its exact column set can vary by
--- Supabase Auth schema version. For real user provisioning, prefer the
--- Admin API (supabase.auth.admin.createUser with the service-role
--- key) from a script or Edge Function. Kept here as plain SQL because
--- that's the pattern this migration already used.
---
 -- ⚠️ Test-only credentials (admin123@ for both). Replace with strong,
 -- distinct passwords before any real patient data touches this
--- project — see supabase.auth.admin.updateUserById() or the Dashboard.
+-- project.
 
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 
 INSERT INTO auth.users (
   instance_id, id, aud, role, email, encrypted_password,
   email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
   created_at, updated_at,
   confirmation_token, recovery_token, email_change_token_new, email_change
-) VALUES (
+)
+SELECT
   '00000000-0000-0000-0000-000000000000',
   gen_random_uuid(),
   'authenticated',
   'authenticated',
   'admin@clinica.local',
-  crypt('admin123@', gen_salt('bf')),
+  extensions.crypt('admin123@', extensions.gen_salt('bf')),
   now(),
   '{"provider":"email","providers":["email"]}',
   '{"full_name":"Administrador"}',
   now(), now(),
   '', '', '', ''
-)
-ON CONFLICT (email) DO NOTHING;
+WHERE NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'admin@clinica.local');
 
 INSERT INTO auth.users (
   instance_id, id, aud, role, email, encrypted_password,
   email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
   created_at, updated_at,
   confirmation_token, recovery_token, email_change_token_new, email_change
-) VALUES (
+)
+SELECT
   '00000000-0000-0000-0000-000000000000',
   gen_random_uuid(),
   'authenticated',
   'authenticated',
   'recepcionista@clinica.local',
-  crypt('admin123@', gen_salt('bf')),
+  extensions.crypt('admin123@', extensions.gen_salt('bf')),
   now(),
   '{"provider":"email","providers":["email"]}',
   '{"full_name":"Recepcionista"}',
   now(), now(),
   '', '', '', ''
-)
-ON CONFLICT (email) DO NOTHING;
+WHERE NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'recepcionista@clinica.local');
 
 -- One identity row per user for the 'email' provider (required by some
 -- GoTrue versions for password-grant sign-in to resolve the identity).
@@ -66,13 +58,11 @@ SELECT gen_random_uuid(), u.id::text, u.id,
        'email', now(), now(), now()
 FROM auth.users u
 WHERE u.email IN ('admin@clinica.local', 'recepcionista@clinica.local')
-ON CONFLICT DO NOTHING;
+  AND NOT EXISTS (
+    SELECT 1 FROM auth.identities i WHERE i.user_id = u.id AND i.provider = 'email'
+  );
 
 -- ============ Confirm e-mail + link profiles/roles ============
--- (Original logic below, unchanged — already idempotent via
--- COALESCE/ON CONFLICT.)
-
--- Confirm receptionist email and set up profiles/roles for both accounts
 UPDATE auth.users SET email_confirmed_at = COALESCE(email_confirmed_at, now()) WHERE email IN ('admin@clinica.local','recepcionista@clinica.local');
 
 DO $$
