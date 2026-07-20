@@ -1,11 +1,19 @@
 -- ============ FINANCIAL MODULE ============
 -- Receitas, despesas, contas a pagar/receber e fluxo de caixa por clínica.
 
-CREATE TYPE public.financial_type AS ENUM ('income', 'expense');
-CREATE TYPE public.financial_status AS ENUM ('pending', 'paid', 'cancelled');
+DO $do$ BEGIN
+  CREATE TYPE public.financial_type AS ENUM ('income', 'expense');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE TYPE public.financial_status AS ENUM ('pending', 'paid', 'cancelled');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ FINANCIAL CATEGORIES ============
-CREATE TABLE public.financial_categories (
+CREATE TABLE IF NOT EXISTS public.financial_categories (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
   name text NOT NULL,
@@ -16,17 +24,21 @@ CREATE TABLE public.financial_categories (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.financial_categories TO authenticated;
 GRANT ALL ON public.financial_categories TO service_role;
 ALTER TABLE public.financial_categories ENABLE ROW LEVEL SECURITY;
-CREATE INDEX idx_fin_categories_clinic ON public.financial_categories(clinic_id);
-CREATE POLICY "fin_categories_manage" ON public.financial_categories FOR ALL TO authenticated
+CREATE INDEX IF NOT EXISTS idx_fin_categories_clinic ON public.financial_categories(clinic_id);
+DO $do$ BEGIN
+  CREATE POLICY "fin_categories_manage" ON public.financial_categories FOR ALL TO authenticated
   USING (clinic_id = public.get_my_clinic_id() AND (public.has_role(auth.uid(),'admin') OR public.has_role(auth.uid(),'manager')))
   WITH CHECK (clinic_id = public.get_my_clinic_id() AND (public.has_role(auth.uid(),'admin') OR public.has_role(auth.uid(),'manager')));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ FINANCIAL TRANSACTIONS ============
 -- A single table models both "contas a receber" (type=income) and
 -- "contas a pagar" (type=expense). "Vencido/overdue" is derived in the
 -- app from due_date + status = 'pending' rather than stored, so no
 -- scheduled job is needed to keep it in sync.
-CREATE TABLE public.financial_transactions (
+CREATE TABLE IF NOT EXISTS public.financial_transactions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
   category_id uuid REFERENCES public.financial_categories(id) ON DELETE SET NULL,
@@ -48,11 +60,19 @@ CREATE TABLE public.financial_transactions (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.financial_transactions TO authenticated;
 GRANT ALL ON public.financial_transactions TO service_role;
 ALTER TABLE public.financial_transactions ENABLE ROW LEVEL SECURITY;
-CREATE INDEX idx_fin_tx_clinic ON public.financial_transactions(clinic_id);
-CREATE INDEX idx_fin_tx_due_date ON public.financial_transactions(clinic_id, due_date);
-CREATE INDEX idx_fin_tx_status ON public.financial_transactions(clinic_id, status);
-CREATE POLICY "fin_tx_manage" ON public.financial_transactions FOR ALL TO authenticated
+CREATE INDEX IF NOT EXISTS idx_fin_tx_clinic ON public.financial_transactions(clinic_id);
+CREATE INDEX IF NOT EXISTS idx_fin_tx_due_date ON public.financial_transactions(clinic_id, due_date);
+CREATE INDEX IF NOT EXISTS idx_fin_tx_status ON public.financial_transactions(clinic_id, status);
+DO $do$ BEGIN
+  CREATE POLICY "fin_tx_manage" ON public.financial_transactions FOR ALL TO authenticated
   USING (clinic_id = public.get_my_clinic_id() AND (public.has_role(auth.uid(),'admin') OR public.has_role(auth.uid(),'manager')))
   WITH CHECK (clinic_id = public.get_my_clinic_id() AND (public.has_role(auth.uid(),'admin') OR public.has_role(auth.uid(),'manager')));
-CREATE TRIGGER trg_fin_tx_updated BEFORE UPDATE ON public.financial_transactions
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE TRIGGER trg_fin_tx_updated BEFORE UPDATE ON public.financial_transactions
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+

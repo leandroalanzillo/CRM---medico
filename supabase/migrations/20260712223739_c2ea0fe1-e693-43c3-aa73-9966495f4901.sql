@@ -1,11 +1,35 @@
 
 -- ============ ENUMS ============
-CREATE TYPE public.app_role AS ENUM ('admin','manager','receptionist','professional','commercial');
-CREATE TYPE public.clinic_type AS ENUM ('medical','dental');
-CREATE TYPE public.appointment_status AS ENUM ('scheduled','confirmed','waiting','in_progress','finished','cancelled','no_show');
-CREATE TYPE public.negotiation_status AS ENUM ('negotiating','awaiting','accepted','rejected','expired');
-CREATE TYPE public.patient_kind AS ENUM ('lead','patient');
-CREATE TYPE public.whatsapp_status AS ENUM ('disconnected','awaiting_qr','connecting','connected','error');
+DO $do$ BEGIN
+  CREATE TYPE public.app_role AS ENUM ('admin','manager','receptionist','professional','commercial');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE TYPE public.clinic_type AS ENUM ('medical','dental');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE TYPE public.appointment_status AS ENUM ('scheduled','confirmed','waiting','in_progress','finished','cancelled','no_show');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE TYPE public.negotiation_status AS ENUM ('negotiating','awaiting','accepted','rejected','expired');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE TYPE public.patient_kind AS ENUM ('lead','patient');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE TYPE public.whatsapp_status AS ENUM ('disconnected','awaiting_qr','connecting','connected','error');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ UPDATED_AT HELPER ============
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
@@ -13,7 +37,7 @@ RETURNS TRIGGER AS $$ BEGIN NEW.updated_at = now(); RETURN NEW; END; $$
 LANGUAGE plpgsql SET search_path = public;
 
 -- ============ CLINICS ============
-CREATE TABLE public.clinics (
+CREATE TABLE IF NOT EXISTS public.clinics (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
   type public.clinic_type NOT NULL DEFAULT 'medical',
@@ -28,7 +52,7 @@ GRANT ALL ON public.clinics TO service_role;
 ALTER TABLE public.clinics ENABLE ROW LEVEL SECURITY;
 
 -- ============ PROFILES ============
-CREATE TABLE public.profiles (
+CREATE TABLE IF NOT EXISTS public.profiles (
   id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   clinic_id uuid REFERENCES public.clinics(id) ON DELETE SET NULL,
   full_name text,
@@ -42,7 +66,7 @@ GRANT ALL ON public.profiles TO service_role;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 -- ============ USER ROLES ============
-CREATE TABLE public.user_roles (
+CREATE TABLE IF NOT EXISTS public.user_roles (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   clinic_id uuid REFERENCES public.clinics(id) ON DELETE CASCADE,
@@ -73,28 +97,56 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
 $$;
 
 -- profiles policies
-CREATE POLICY "profiles_select_same_clinic" ON public.profiles FOR SELECT TO authenticated
+DO $do$ BEGIN
+  CREATE POLICY "profiles_select_same_clinic" ON public.profiles FOR SELECT TO authenticated
   USING (id = auth.uid() OR clinic_id = public.get_my_clinic_id());
-CREATE POLICY "profiles_update_own" ON public.profiles FOR UPDATE TO authenticated
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE POLICY "profiles_update_own" ON public.profiles FOR UPDATE TO authenticated
   USING (id = auth.uid()) WITH CHECK (id = auth.uid());
-CREATE POLICY "profiles_admin_update" ON public.profiles FOR UPDATE TO authenticated
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE POLICY "profiles_admin_update" ON public.profiles FOR UPDATE TO authenticated
   USING (clinic_id = public.get_my_clinic_id() AND public.has_role(auth.uid(),'admin'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- clinics policies
-CREATE POLICY "clinics_select_own" ON public.clinics FOR SELECT TO authenticated
+DO $do$ BEGIN
+  CREATE POLICY "clinics_select_own" ON public.clinics FOR SELECT TO authenticated
   USING (id = public.get_my_clinic_id());
-CREATE POLICY "clinics_update_admin" ON public.clinics FOR UPDATE TO authenticated
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE POLICY "clinics_update_admin" ON public.clinics FOR UPDATE TO authenticated
   USING (id = public.get_my_clinic_id() AND public.has_role(auth.uid(),'admin'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- user_roles policies
-CREATE POLICY "roles_select_same_clinic" ON public.user_roles FOR SELECT TO authenticated
+DO $do$ BEGIN
+  CREATE POLICY "roles_select_same_clinic" ON public.user_roles FOR SELECT TO authenticated
   USING (user_id = auth.uid() OR clinic_id = public.get_my_clinic_id());
-CREATE POLICY "roles_admin_manage" ON public.user_roles FOR ALL TO authenticated
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE POLICY "roles_admin_manage" ON public.user_roles FOR ALL TO authenticated
   USING (clinic_id = public.get_my_clinic_id() AND public.has_role(auth.uid(),'admin'))
   WITH CHECK (clinic_id = public.get_my_clinic_id() AND public.has_role(auth.uid(),'admin'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ SPECIALTIES ============
-CREATE TABLE public.specialties (
+CREATE TABLE IF NOT EXISTS public.specialties (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
   name text NOT NULL,
@@ -103,11 +155,15 @@ CREATE TABLE public.specialties (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.specialties TO authenticated;
 GRANT ALL ON public.specialties TO service_role;
 ALTER TABLE public.specialties ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "specialties_clinic" ON public.specialties FOR ALL TO authenticated
+DO $do$ BEGIN
+  CREATE POLICY "specialties_clinic" ON public.specialties FOR ALL TO authenticated
   USING (clinic_id = public.get_my_clinic_id()) WITH CHECK (clinic_id = public.get_my_clinic_id());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ PROFESSIONALS ============
-CREATE TABLE public.professionals (
+CREATE TABLE IF NOT EXISTS public.professionals (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
   user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
@@ -122,16 +178,28 @@ CREATE TABLE public.professionals (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.professionals TO authenticated;
 GRANT ALL ON public.professionals TO service_role;
 ALTER TABLE public.professionals ENABLE ROW LEVEL SECURITY;
-CREATE INDEX idx_professionals_clinic ON public.professionals(clinic_id);
-CREATE POLICY "professionals_select" ON public.professionals FOR SELECT TO authenticated
+CREATE INDEX IF NOT EXISTS idx_professionals_clinic ON public.professionals(clinic_id);
+DO $do$ BEGIN
+  CREATE POLICY "professionals_select" ON public.professionals FOR SELECT TO authenticated
   USING (clinic_id = public.get_my_clinic_id());
-CREATE POLICY "professionals_manage" ON public.professionals FOR ALL TO authenticated
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE POLICY "professionals_manage" ON public.professionals FOR ALL TO authenticated
   USING (clinic_id = public.get_my_clinic_id() AND (public.has_role(auth.uid(),'admin') OR public.has_role(auth.uid(),'manager')))
   WITH CHECK (clinic_id = public.get_my_clinic_id() AND (public.has_role(auth.uid(),'admin') OR public.has_role(auth.uid(),'manager')));
-CREATE TRIGGER trg_professionals_updated BEFORE UPDATE ON public.professionals FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE TRIGGER trg_professionals_updated BEFORE UPDATE ON public.professionals FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ TAGS ============
-CREATE TABLE public.tags (
+CREATE TABLE IF NOT EXISTS public.tags (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
   name text NOT NULL,
@@ -141,11 +209,15 @@ CREATE TABLE public.tags (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.tags TO authenticated;
 GRANT ALL ON public.tags TO service_role;
 ALTER TABLE public.tags ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "tags_clinic" ON public.tags FOR ALL TO authenticated
+DO $do$ BEGIN
+  CREATE POLICY "tags_clinic" ON public.tags FOR ALL TO authenticated
   USING (clinic_id = public.get_my_clinic_id()) WITH CHECK (clinic_id = public.get_my_clinic_id());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ PATIENTS (leads + patients) ============
-CREATE TABLE public.patients (
+CREATE TABLE IF NOT EXISTS public.patients (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
   kind public.patient_kind NOT NULL DEFAULT 'lead',
@@ -171,13 +243,21 @@ CREATE TABLE public.patients (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.patients TO authenticated;
 GRANT ALL ON public.patients TO service_role;
 ALTER TABLE public.patients ENABLE ROW LEVEL SECURITY;
-CREATE INDEX idx_patients_clinic ON public.patients(clinic_id);
-CREATE POLICY "patients_clinic" ON public.patients FOR ALL TO authenticated
+CREATE INDEX IF NOT EXISTS idx_patients_clinic ON public.patients(clinic_id);
+DO $do$ BEGIN
+  CREATE POLICY "patients_clinic" ON public.patients FOR ALL TO authenticated
   USING (clinic_id = public.get_my_clinic_id()) WITH CHECK (clinic_id = public.get_my_clinic_id());
-CREATE TRIGGER trg_patients_updated BEFORE UPDATE ON public.patients FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE TRIGGER trg_patients_updated BEFORE UPDATE ON public.patients FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ PATIENT TAGS ============
-CREATE TABLE public.patient_tags (
+CREATE TABLE IF NOT EXISTS public.patient_tags (
   patient_id uuid NOT NULL REFERENCES public.patients(id) ON DELETE CASCADE,
   tag_id uuid NOT NULL REFERENCES public.tags(id) ON DELETE CASCADE,
   clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
@@ -186,11 +266,15 @@ CREATE TABLE public.patient_tags (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.patient_tags TO authenticated;
 GRANT ALL ON public.patient_tags TO service_role;
 ALTER TABLE public.patient_tags ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "patient_tags_clinic" ON public.patient_tags FOR ALL TO authenticated
+DO $do$ BEGIN
+  CREATE POLICY "patient_tags_clinic" ON public.patient_tags FOR ALL TO authenticated
   USING (clinic_id = public.get_my_clinic_id()) WITH CHECK (clinic_id = public.get_my_clinic_id());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ PIPELINE STAGES ============
-CREATE TABLE public.pipeline_stages (
+CREATE TABLE IF NOT EXISTS public.pipeline_stages (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
   name text NOT NULL,
@@ -202,15 +286,23 @@ CREATE TABLE public.pipeline_stages (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.pipeline_stages TO authenticated;
 GRANT ALL ON public.pipeline_stages TO service_role;
 ALTER TABLE public.pipeline_stages ENABLE ROW LEVEL SECURITY;
-CREATE INDEX idx_stages_clinic ON public.pipeline_stages(clinic_id);
-CREATE POLICY "stages_select" ON public.pipeline_stages FOR SELECT TO authenticated
+CREATE INDEX IF NOT EXISTS idx_stages_clinic ON public.pipeline_stages(clinic_id);
+DO $do$ BEGIN
+  CREATE POLICY "stages_select" ON public.pipeline_stages FOR SELECT TO authenticated
   USING (clinic_id = public.get_my_clinic_id());
-CREATE POLICY "stages_manage" ON public.pipeline_stages FOR ALL TO authenticated
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE POLICY "stages_manage" ON public.pipeline_stages FOR ALL TO authenticated
   USING (clinic_id = public.get_my_clinic_id() AND (public.has_role(auth.uid(),'admin') OR public.has_role(auth.uid(),'manager')))
   WITH CHECK (clinic_id = public.get_my_clinic_id() AND (public.has_role(auth.uid(),'admin') OR public.has_role(auth.uid(),'manager')));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ PIPELINE CARDS ============
-CREATE TABLE public.pipeline_cards (
+CREATE TABLE IF NOT EXISTS public.pipeline_cards (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
   patient_id uuid NOT NULL REFERENCES public.patients(id) ON DELETE CASCADE,
@@ -226,14 +318,22 @@ CREATE TABLE public.pipeline_cards (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.pipeline_cards TO authenticated;
 GRANT ALL ON public.pipeline_cards TO service_role;
 ALTER TABLE public.pipeline_cards ENABLE ROW LEVEL SECURITY;
-CREATE INDEX idx_cards_clinic ON public.pipeline_cards(clinic_id);
-CREATE INDEX idx_cards_stage ON public.pipeline_cards(stage_id);
-CREATE POLICY "cards_clinic" ON public.pipeline_cards FOR ALL TO authenticated
+CREATE INDEX IF NOT EXISTS idx_cards_clinic ON public.pipeline_cards(clinic_id);
+CREATE INDEX IF NOT EXISTS idx_cards_stage ON public.pipeline_cards(stage_id);
+DO $do$ BEGIN
+  CREATE POLICY "cards_clinic" ON public.pipeline_cards FOR ALL TO authenticated
   USING (clinic_id = public.get_my_clinic_id()) WITH CHECK (clinic_id = public.get_my_clinic_id());
-CREATE TRIGGER trg_cards_updated BEFORE UPDATE ON public.pipeline_cards FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE TRIGGER trg_cards_updated BEFORE UPDATE ON public.pipeline_cards FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ PATIENT TIMELINE ============
-CREATE TABLE public.patient_timeline (
+CREATE TABLE IF NOT EXISTS public.patient_timeline (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
   patient_id uuid NOT NULL REFERENCES public.patients(id) ON DELETE CASCADE,
@@ -246,12 +346,16 @@ CREATE TABLE public.patient_timeline (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.patient_timeline TO authenticated;
 GRANT ALL ON public.patient_timeline TO service_role;
 ALTER TABLE public.patient_timeline ENABLE ROW LEVEL SECURITY;
-CREATE INDEX idx_timeline_patient ON public.patient_timeline(patient_id);
-CREATE POLICY "timeline_clinic" ON public.patient_timeline FOR ALL TO authenticated
+CREATE INDEX IF NOT EXISTS idx_timeline_patient ON public.patient_timeline(patient_id);
+DO $do$ BEGIN
+  CREATE POLICY "timeline_clinic" ON public.patient_timeline FOR ALL TO authenticated
   USING (clinic_id = public.get_my_clinic_id()) WITH CHECK (clinic_id = public.get_my_clinic_id());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ PROCEDURES ============
-CREATE TABLE public.procedures (
+CREATE TABLE IF NOT EXISTS public.procedures (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
   name text NOT NULL,
@@ -263,11 +367,15 @@ CREATE TABLE public.procedures (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.procedures TO authenticated;
 GRANT ALL ON public.procedures TO service_role;
 ALTER TABLE public.procedures ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "procedures_clinic" ON public.procedures FOR ALL TO authenticated
+DO $do$ BEGIN
+  CREATE POLICY "procedures_clinic" ON public.procedures FOR ALL TO authenticated
   USING (clinic_id = public.get_my_clinic_id()) WITH CHECK (clinic_id = public.get_my_clinic_id());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ APPOINTMENTS ============
-CREATE TABLE public.appointments (
+CREATE TABLE IF NOT EXISTS public.appointments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
   patient_id uuid NOT NULL REFERENCES public.patients(id) ON DELETE CASCADE,
@@ -286,14 +394,22 @@ CREATE TABLE public.appointments (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.appointments TO authenticated;
 GRANT ALL ON public.appointments TO service_role;
 ALTER TABLE public.appointments ENABLE ROW LEVEL SECURITY;
-CREATE INDEX idx_appt_clinic ON public.appointments(clinic_id);
-CREATE INDEX idx_appt_prof_time ON public.appointments(professional_id, starts_at);
-CREATE POLICY "appointments_clinic" ON public.appointments FOR ALL TO authenticated
+CREATE INDEX IF NOT EXISTS idx_appt_clinic ON public.appointments(clinic_id);
+CREATE INDEX IF NOT EXISTS idx_appt_prof_time ON public.appointments(professional_id, starts_at);
+DO $do$ BEGIN
+  CREATE POLICY "appointments_clinic" ON public.appointments FOR ALL TO authenticated
   USING (clinic_id = public.get_my_clinic_id()) WITH CHECK (clinic_id = public.get_my_clinic_id());
-CREATE TRIGGER trg_appt_updated BEFORE UPDATE ON public.appointments FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE TRIGGER trg_appt_updated BEFORE UPDATE ON public.appointments FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ APPOINTMENT STATUS HISTORY ============
-CREATE TABLE public.appointment_status_history (
+CREATE TABLE IF NOT EXISTS public.appointment_status_history (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
   appointment_id uuid NOT NULL REFERENCES public.appointments(id) ON DELETE CASCADE,
@@ -305,11 +421,15 @@ CREATE TABLE public.appointment_status_history (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.appointment_status_history TO authenticated;
 GRANT ALL ON public.appointment_status_history TO service_role;
 ALTER TABLE public.appointment_status_history ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "appt_history_clinic" ON public.appointment_status_history FOR ALL TO authenticated
+DO $do$ BEGIN
+  CREATE POLICY "appt_history_clinic" ON public.appointment_status_history FOR ALL TO authenticated
   USING (clinic_id = public.get_my_clinic_id()) WITH CHECK (clinic_id = public.get_my_clinic_id());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ NEGOTIATIONS ============
-CREATE TABLE public.negotiations (
+CREATE TABLE IF NOT EXISTS public.negotiations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
   patient_id uuid NOT NULL REFERENCES public.patients(id) ON DELETE CASCADE,
@@ -329,13 +449,21 @@ CREATE TABLE public.negotiations (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.negotiations TO authenticated;
 GRANT ALL ON public.negotiations TO service_role;
 ALTER TABLE public.negotiations ENABLE ROW LEVEL SECURITY;
-CREATE INDEX idx_neg_clinic ON public.negotiations(clinic_id);
-CREATE POLICY "negotiations_clinic" ON public.negotiations FOR ALL TO authenticated
+CREATE INDEX IF NOT EXISTS idx_neg_clinic ON public.negotiations(clinic_id);
+DO $do$ BEGIN
+  CREATE POLICY "negotiations_clinic" ON public.negotiations FOR ALL TO authenticated
   USING (clinic_id = public.get_my_clinic_id()) WITH CHECK (clinic_id = public.get_my_clinic_id());
-CREATE TRIGGER trg_neg_updated BEFORE UPDATE ON public.negotiations FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE TRIGGER trg_neg_updated BEFORE UPDATE ON public.negotiations FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ NEGOTIATION ITEMS ============
-CREATE TABLE public.negotiation_items (
+CREATE TABLE IF NOT EXISTS public.negotiation_items (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
   negotiation_id uuid NOT NULL REFERENCES public.negotiations(id) ON DELETE CASCADE,
@@ -348,11 +476,15 @@ CREATE TABLE public.negotiation_items (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.negotiation_items TO authenticated;
 GRANT ALL ON public.negotiation_items TO service_role;
 ALTER TABLE public.negotiation_items ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "neg_items_clinic" ON public.negotiation_items FOR ALL TO authenticated
+DO $do$ BEGIN
+  CREATE POLICY "neg_items_clinic" ON public.negotiation_items FOR ALL TO authenticated
   USING (clinic_id = public.get_my_clinic_id()) WITH CHECK (clinic_id = public.get_my_clinic_id());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ NEGOTIATION HISTORY ============
-CREATE TABLE public.negotiation_history (
+CREATE TABLE IF NOT EXISTS public.negotiation_history (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
   negotiation_id uuid NOT NULL REFERENCES public.negotiations(id) ON DELETE CASCADE,
@@ -364,11 +496,15 @@ CREATE TABLE public.negotiation_history (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.negotiation_history TO authenticated;
 GRANT ALL ON public.negotiation_history TO service_role;
 ALTER TABLE public.negotiation_history ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "neg_history_clinic" ON public.negotiation_history FOR ALL TO authenticated
+DO $do$ BEGIN
+  CREATE POLICY "neg_history_clinic" ON public.negotiation_history FOR ALL TO authenticated
   USING (clinic_id = public.get_my_clinic_id()) WITH CHECK (clinic_id = public.get_my_clinic_id());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ MEDICAL RECORDS (sensitive) ============
-CREATE TABLE public.medical_records (
+CREATE TABLE IF NOT EXISTS public.medical_records (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
   patient_id uuid NOT NULL UNIQUE REFERENCES public.patients(id) ON DELETE CASCADE,
@@ -384,17 +520,33 @@ CREATE TABLE public.medical_records (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.medical_records TO authenticated;
 GRANT ALL ON public.medical_records TO service_role;
 ALTER TABLE public.medical_records ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "records_clinical_read" ON public.medical_records FOR SELECT TO authenticated
+DO $do$ BEGIN
+  CREATE POLICY "records_clinical_read" ON public.medical_records FOR SELECT TO authenticated
   USING (clinic_id = public.get_my_clinic_id() AND public.can_view_clinical());
-CREATE POLICY "records_clinical_write" ON public.medical_records FOR INSERT TO authenticated
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE POLICY "records_clinical_write" ON public.medical_records FOR INSERT TO authenticated
   WITH CHECK (clinic_id = public.get_my_clinic_id() AND public.can_view_clinical());
-CREATE POLICY "records_clinical_update" ON public.medical_records FOR UPDATE TO authenticated
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE POLICY "records_clinical_update" ON public.medical_records FOR UPDATE TO authenticated
   USING (clinic_id = public.get_my_clinic_id() AND public.can_view_clinical())
   WITH CHECK (clinic_id = public.get_my_clinic_id() AND public.can_view_clinical());
-CREATE TRIGGER trg_records_updated BEFORE UPDATE ON public.medical_records FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE TRIGGER trg_records_updated BEFORE UPDATE ON public.medical_records FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ CLINICAL EVOLUTIONS (append-only, no silent delete) ============
-CREATE TABLE public.clinical_evolutions (
+CREATE TABLE IF NOT EXISTS public.clinical_evolutions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
   patient_id uuid NOT NULL REFERENCES public.patients(id) ON DELETE CASCADE,
@@ -408,18 +560,34 @@ CREATE TABLE public.clinical_evolutions (
 GRANT SELECT, INSERT, UPDATE ON public.clinical_evolutions TO authenticated;
 GRANT ALL ON public.clinical_evolutions TO service_role;
 ALTER TABLE public.clinical_evolutions ENABLE ROW LEVEL SECURITY;
-CREATE INDEX idx_evolutions_patient ON public.clinical_evolutions(patient_id);
-CREATE POLICY "evolutions_clinical_read" ON public.clinical_evolutions FOR SELECT TO authenticated
+CREATE INDEX IF NOT EXISTS idx_evolutions_patient ON public.clinical_evolutions(patient_id);
+DO $do$ BEGIN
+  CREATE POLICY "evolutions_clinical_read" ON public.clinical_evolutions FOR SELECT TO authenticated
   USING (clinic_id = public.get_my_clinic_id() AND public.can_view_clinical());
-CREATE POLICY "evolutions_clinical_write" ON public.clinical_evolutions FOR INSERT TO authenticated
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE POLICY "evolutions_clinical_write" ON public.clinical_evolutions FOR INSERT TO authenticated
   WITH CHECK (clinic_id = public.get_my_clinic_id() AND public.can_view_clinical());
-CREATE POLICY "evolutions_clinical_update" ON public.clinical_evolutions FOR UPDATE TO authenticated
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE POLICY "evolutions_clinical_update" ON public.clinical_evolutions FOR UPDATE TO authenticated
   USING (clinic_id = public.get_my_clinic_id() AND public.can_view_clinical())
   WITH CHECK (clinic_id = public.get_my_clinic_id() AND public.can_view_clinical());
-CREATE TRIGGER trg_evolutions_updated BEFORE UPDATE ON public.clinical_evolutions FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE TRIGGER trg_evolutions_updated BEFORE UPDATE ON public.clinical_evolutions FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ CLINICAL FILES ============
-CREATE TABLE public.clinical_files (
+CREATE TABLE IF NOT EXISTS public.clinical_files (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
   patient_id uuid NOT NULL REFERENCES public.patients(id) ON DELETE CASCADE,
@@ -432,12 +600,16 @@ CREATE TABLE public.clinical_files (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.clinical_files TO authenticated;
 GRANT ALL ON public.clinical_files TO service_role;
 ALTER TABLE public.clinical_files ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "files_clinical" ON public.clinical_files FOR ALL TO authenticated
+DO $do$ BEGIN
+  CREATE POLICY "files_clinical" ON public.clinical_files FOR ALL TO authenticated
   USING (clinic_id = public.get_my_clinic_id() AND public.can_view_clinical())
   WITH CHECK (clinic_id = public.get_my_clinic_id() AND public.can_view_clinical());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ CONVERSATIONS ============
-CREATE TABLE public.conversations (
+CREATE TABLE IF NOT EXISTS public.conversations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
   patient_id uuid REFERENCES public.patients(id) ON DELETE SET NULL,
@@ -453,12 +625,20 @@ CREATE TABLE public.conversations (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.conversations TO authenticated;
 GRANT ALL ON public.conversations TO service_role;
 ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "conversations_clinic" ON public.conversations FOR ALL TO authenticated
+DO $do$ BEGIN
+  CREATE POLICY "conversations_clinic" ON public.conversations FOR ALL TO authenticated
   USING (clinic_id = public.get_my_clinic_id()) WITH CHECK (clinic_id = public.get_my_clinic_id());
-CREATE TRIGGER trg_conv_updated BEFORE UPDATE ON public.conversations FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE TRIGGER trg_conv_updated BEFORE UPDATE ON public.conversations FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ MESSAGES ============
-CREATE TABLE public.messages (
+CREATE TABLE IF NOT EXISTS public.messages (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
   conversation_id uuid NOT NULL REFERENCES public.conversations(id) ON DELETE CASCADE,
@@ -470,12 +650,16 @@ CREATE TABLE public.messages (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.messages TO authenticated;
 GRANT ALL ON public.messages TO service_role;
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
-CREATE INDEX idx_messages_conv ON public.messages(conversation_id);
-CREATE POLICY "messages_clinic" ON public.messages FOR ALL TO authenticated
+CREATE INDEX IF NOT EXISTS idx_messages_conv ON public.messages(conversation_id);
+DO $do$ BEGIN
+  CREATE POLICY "messages_clinic" ON public.messages FOR ALL TO authenticated
   USING (clinic_id = public.get_my_clinic_id()) WITH CHECK (clinic_id = public.get_my_clinic_id());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ WHATSAPP CONNECTIONS ============
-CREATE TABLE public.whatsapp_connections (
+CREATE TABLE IF NOT EXISTS public.whatsapp_connections (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL UNIQUE REFERENCES public.clinics(id) ON DELETE CASCADE,
   provider text,
@@ -488,15 +672,27 @@ CREATE TABLE public.whatsapp_connections (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.whatsapp_connections TO authenticated;
 GRANT ALL ON public.whatsapp_connections TO service_role;
 ALTER TABLE public.whatsapp_connections ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "wa_conn_read" ON public.whatsapp_connections FOR SELECT TO authenticated
+DO $do$ BEGIN
+  CREATE POLICY "wa_conn_read" ON public.whatsapp_connections FOR SELECT TO authenticated
   USING (clinic_id = public.get_my_clinic_id());
-CREATE POLICY "wa_conn_manage" ON public.whatsapp_connections FOR ALL TO authenticated
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE POLICY "wa_conn_manage" ON public.whatsapp_connections FOR ALL TO authenticated
   USING (clinic_id = public.get_my_clinic_id() AND (public.has_role(auth.uid(),'admin') OR public.has_role(auth.uid(),'manager')))
   WITH CHECK (clinic_id = public.get_my_clinic_id() AND (public.has_role(auth.uid(),'admin') OR public.has_role(auth.uid(),'manager')));
-CREATE TRIGGER trg_wa_updated BEFORE UPDATE ON public.whatsapp_connections FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE TRIGGER trg_wa_updated BEFORE UPDATE ON public.whatsapp_connections FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ AUDIT LOGS ============
-CREATE TABLE public.audit_logs (
+CREATE TABLE IF NOT EXISTS public.audit_logs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid REFERENCES public.clinics(id) ON DELETE CASCADE,
   user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
@@ -510,14 +706,22 @@ CREATE TABLE public.audit_logs (
 GRANT SELECT, INSERT ON public.audit_logs TO authenticated;
 GRANT ALL ON public.audit_logs TO service_role;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
-CREATE INDEX idx_audit_clinic ON public.audit_logs(clinic_id);
-CREATE POLICY "audit_read_admin" ON public.audit_logs FOR SELECT TO authenticated
+CREATE INDEX IF NOT EXISTS idx_audit_clinic ON public.audit_logs(clinic_id);
+DO $do$ BEGIN
+  CREATE POLICY "audit_read_admin" ON public.audit_logs FOR SELECT TO authenticated
   USING (clinic_id = public.get_my_clinic_id() AND (public.has_role(auth.uid(),'admin') OR public.has_role(auth.uid(),'manager')));
-CREATE POLICY "audit_insert" ON public.audit_logs FOR INSERT TO authenticated
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE POLICY "audit_insert" ON public.audit_logs FOR INSERT TO authenticated
   WITH CHECK (clinic_id = public.get_my_clinic_id());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
 
 -- ============ MEDICAL RECORD ACCESS LOGS ============
-CREATE TABLE public.medical_record_access_logs (
+CREATE TABLE IF NOT EXISTS public.medical_record_access_logs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
   patient_id uuid NOT NULL REFERENCES public.patients(id) ON DELETE CASCADE,
@@ -528,7 +732,15 @@ CREATE TABLE public.medical_record_access_logs (
 GRANT SELECT, INSERT ON public.medical_record_access_logs TO authenticated;
 GRANT ALL ON public.medical_record_access_logs TO service_role;
 ALTER TABLE public.medical_record_access_logs ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "mr_access_read_admin" ON public.medical_record_access_logs FOR SELECT TO authenticated
+DO $do$ BEGIN
+  CREATE POLICY "mr_access_read_admin" ON public.medical_record_access_logs FOR SELECT TO authenticated
   USING (clinic_id = public.get_my_clinic_id() AND (public.has_role(auth.uid(),'admin') OR public.has_role(auth.uid(),'manager')));
-CREATE POLICY "mr_access_insert" ON public.medical_record_access_logs FOR INSERT TO authenticated
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  CREATE POLICY "mr_access_insert" ON public.medical_record_access_logs FOR INSERT TO authenticated
   WITH CHECK (clinic_id = public.get_my_clinic_id() AND public.can_view_clinical());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+
