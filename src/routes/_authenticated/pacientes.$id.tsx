@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useApp } from "@/lib/app-context";
 import { PatientDialog } from "@/components/patient-dialog";
+import { AppointmentDialog } from "@/components/appointment-dialog";
 import { NegotiationDialog } from "@/components/negotiation-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,6 +46,7 @@ import {
   Download,
   Trash2,
   Upload,
+  CalendarPlus,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/pacientes/$id")({
@@ -64,6 +66,7 @@ function PatientProfile() {
   const { id } = useParams({ from: "/_authenticated/pacientes/$id" });
   const { clinic, canViewClinical } = useApp();
   const [edit, setEdit] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   const [negOpen, setNegOpen] = useState(false);
 
   const { data: patient, isLoading } = useQuery({
@@ -151,11 +154,20 @@ function PatientProfile() {
               {patient.source && <> · Origem: {patient.source}</>}
             </p>
           </div>
+          <Button onClick={() => setScheduleOpen(true)}>
+            <CalendarPlus className="size-4" /> Agendar consulta
+          </Button>
           <Button variant="outline" onClick={() => setEdit(true)}>
             <Pencil className="size-4" /> Editar
           </Button>
         </CardContent>
       </Card>
+
+      <AppointmentDialog
+        open={scheduleOpen}
+        onOpenChange={setScheduleOpen}
+        initialPatientId={patient.id}
+      />
 
       <Tabs defaultValue="overview">
         <TabsList className="mb-4 flex-wrap">

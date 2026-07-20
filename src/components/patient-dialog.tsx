@@ -61,10 +61,13 @@ export function PatientDialog({
   open,
   onOpenChange,
   patient,
+  onCreated,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   patient?: Patient | null;
+  /** Fired only for a brand-new patient (not on edit), with their id and assigned professional so the caller can offer to schedule right away. */
+  onCreated?: (patientId: string, professionalId: string | null) => void;
 }) {
   const { clinic, userId } = useApp();
   const { data: professionals } = useProfessionals(clinic?.id);
@@ -204,6 +207,7 @@ export function PatientDialog({
           });
         }
         toast.success("Lead criado e adicionado ao CRM.");
+        onCreated?.(created.id, form.professional_id || null);
       }
       queryClient.invalidateQueries();
       onOpenChange(false);

@@ -41,11 +41,27 @@ export async function startWhatsAppPairing(instanceName: string): Promise<EvoRes
   try {
     // Instance may already exist from a previous attempt — that's fine,
     // we just move on to fetching/refreshing the QR code either way.
-    await fetch(`${baseUrl}/instance/create`, {
+    // Some Evolution API versions return the QR code inline in this very
+    // response (instance.qrcode.base64); check for it before falling back
+    // to the separate /connect call other versions require.
+    const createRes = await fetch(`${baseUrl}/instance/create`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: apiKey! },
       body: JSON.stringify({ instanceName, qrcode: true, integration: "WHATSAPP-BAILEYS" }),
     }).catch(() => null);
+
+    if (createRes?.ok) {
+      const createData = (await createRes.json().catch(() => null)) as {
+        qrcode?: { base64?: string };
+      } | null;
+      const inlineQr = createData?.qrcode?.base64;
+      if (inlineQr) {
+        const qrCode = inlineQr.startsWith("data:")
+          ? inlineQr
+          : `data:image/png;base64,${inlineQr}`;
+        return { ok: true, qrCode, status: "awaiting_qr" };
+      }
+    }
 
     const res = await fetch(`${baseUrl}/instance/connect/${instanceName}`, {
       method: "GET",
@@ -59,7 +75,13 @@ export async function startWhatsAppPairing(instanceName: string): Promise<EvoRes
     if (!data.base64) {
       return { ok: false, error: "QR Code não retornado pela Evolution API." };
     }
-    return { ok: true, qrCode: data.base64, status: "awaiting_qr" };
+    // Some Evolution API versions return the bare base64 payload without
+    // the "data:image/png;base64," prefix an <img> tag needs — normalize
+    // either shape into a real data URI.
+    const qrCode = data.base64.startsWith("data:")
+      ? data.base64
+      : `data:image/png;base64,${data.base64}`;
+    return { ok: true, qrCode, status: "awaiting_qr" };
   } catch (e) {
     return { ok: false, error: `Evolution API: ${(e as Error).message}` };
   }

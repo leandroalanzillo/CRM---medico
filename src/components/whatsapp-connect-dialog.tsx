@@ -20,7 +20,26 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { WA_STATUS } from "@/lib/format";
-import { Loader2, QrCode, Unplug, RefreshCw } from "lucide-react";
+import { Loader2, QrCode, Unplug, RefreshCw, AlertTriangle } from "lucide-react";
+
+/**
+ * requireSupabaseAuth (used by every server function, not just this one)
+ * throws a specific message when SUPABASE_URL/SUPABASE_PUBLISHABLE_KEY are
+ * missing on the SERVER side — a separate thing from the VITE_-prefixed
+ * client-side copies, which is why the rest of the app can work fine while
+ * this specific check fails. Evolution API not being configured is a
+ * different, equally common cause. Both need a persistent, specific
+ * message — a toast that disappears in a few seconds isn't enough to act on.
+ */
+function friendlyServerError(message: string): string {
+  if (message.includes("Missing Supabase environment variable")) {
+    return "Configuração do servidor incompleta: defina SUPABASE_URL e SUPABASE_PUBLISHABLE_KEY (sem prefixo VITE_) nas variáveis de ambiente do projeto no Lovable Cloud — são usadas pelas funções de servidor, separadas das variáveis VITE_ do navegador.";
+  }
+  if (message.includes("Evolution API não configurada")) {
+    return "Nenhum provedor de WhatsApp configurado ainda: defina EVOLUTION_API_URL e EVOLUTION_API_KEY nas variáveis de ambiente do servidor, apontando para uma instância do Evolution API (self-hosted) já rodando. Sem isso, não existe QR Code para gerar — é diferente do modo gratuito por link (wa.me) usado no restante desta página.";
+  }
+  return message || "Não foi possível gerar o QR Code.";
+}
 
 export function WhatsAppConnectDialog({
   open,
@@ -37,6 +56,7 @@ export function WhatsAppConnectDialog({
 
   const [loading, setLoading] = useState(false);
   const [qrCode, setQrCode] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { data: connection } = useQuery({
@@ -54,14 +74,25 @@ export function WhatsAppConnectDialog({
 
   const status = connection?.status ?? "disconnected";
 
+  useEffect(() => {
+    if (open) {
+      setError(null);
+      setQrCode(null);
+    }
+  }, [open]);
+
   async function startPairing() {
     setLoading(true);
+    setError(null);
     try {
       const result = await doConnect();
       setQrCode(result.qrCode ?? null);
       queryClient.invalidateQueries({ queryKey: ["wa-conn", clinic?.id] });
     } catch (e) {
-      toast.error((e as Error).message || "Não foi possível gerar o QR Code.");
+      const msg = friendlyServerError((e as Error).message);
+      console.error("[whatsapp] connect failed:", (e as Error).message);
+      setError(msg);
+      toast.error(msg);
     }
     setLoading(false);
   }
@@ -98,7 +129,7 @@ export function WhatsAppConnectDialog({
       toast.success("WhatsApp desconectado.");
       queryClient.invalidateQueries({ queryKey: ["wa-conn", clinic?.id] });
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(friendlyServerError((e as Error).message));
     }
     setLoading(false);
   }
@@ -125,6 +156,11 @@ export function WhatsAppConnectDialog({
               <p className="text-sm text-muted-foreground">
                 Número conectado{connection?.phone_number ? `: ${connection.phone_number}` : "."}
               </p>
+            </div>
+          ) : error ? (
+            <div className="flex size-56 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-destructive/40 bg-destructive/5 p-4 text-center">
+              <AlertTriangle className="size-6 text-destructive" />
+              <p className="text-xs text-destructive">{error}</p>
             </div>
           ) : qrCode || connection?.qr_code ? (
             <img

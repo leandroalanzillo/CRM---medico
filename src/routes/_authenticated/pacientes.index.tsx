@@ -7,6 +7,7 @@ import { useApp } from "@/lib/app-context";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
 import { PatientDialog } from "@/components/patient-dialog";
+import { AppointmentDialog } from "@/components/appointment-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -77,6 +78,8 @@ function PatientsPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Patient | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PatientRow | null>(null);
+  const [schedulePrompt, setSchedulePrompt] = useState<string | null>(null);
+  const [scheduleFor, setScheduleFor] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
 
   const { data, isLoading } = useQuery({
@@ -386,6 +389,39 @@ function PatientsPage() {
           if (!v) setEditing(null);
         }}
         patient={editing}
+        onCreated={(newPatientId) => setSchedulePrompt(newPatientId)}
+      />
+
+      {/* Right after creating a patient, offer to schedule their first appointment
+          immediately — this is the missing link the "cadastro -> agendamento ->
+          calendário do profissional" flow needed. */}
+      <AlertDialog open={!!schedulePrompt} onOpenChange={(v) => !v && setSchedulePrompt(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Agendar consulta agora?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O paciente foi cadastrado. Quer marcar a primeira consulta já, com o profissional
+              vinculado a ele pré-selecionado?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setSchedulePrompt(null)}>Depois</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setScheduleFor(schedulePrompt);
+                setSchedulePrompt(null);
+              }}
+            >
+              Agendar agora
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AppointmentDialog
+        open={!!scheduleFor}
+        onOpenChange={(v) => !v && setScheduleFor(null)}
+        initialPatientId={scheduleFor ?? undefined}
       />
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
