@@ -10,17 +10,27 @@
 // Usage:
 //   SUPABASE_URL=https://xxxx.supabase.co \
 //   SUPABASE_SERVICE_ROLE_KEY=eyJ... \
+//   SUPABASE_ANON_KEY=eyJ... \
 //   node scripts/seed-test-users.mjs
 //
-// Get both values from Supabase Dashboard -> Project Settings -> API.
-// SUPABASE_SERVICE_ROLE_KEY is secret — never commit it, never expose
-// it to the frontend/browser bundle. Run this script locally or in a
-// trusted CI step only.
+// SUPABASE_ANON_KEY is optional but recommended: with it, the script
+// finishes by actually calling signInWithPassword for both accounts
+// (the same call src/routes/auth.tsx makes) and prints whether it
+// really works — no need to open the app to find out.
+//
+// Get all three values from Supabase Dashboard -> Project Settings ->
+// API. SUPABASE_SERVICE_ROLE_KEY is secret — never commit it, never
+// expose it to the frontend/browser bundle. Run this script locally or
+// in a trusted CI step only.
 
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// Optional: if provided, the script also tries a real signInWithPassword
+// at the end, using the exact same code path the app uses, so you get an
+// empirical yes/no instead of trusting that creation "should" have worked.
+const ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
 if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
   console.error(
@@ -44,23 +54,24 @@ const TEST_USERS = [
 ];
 
 async function ensureUser({ email, password, fullName }) {
-  // createUser fails if the email already exists — look it up first so
-  // this script is safe to run more than once.
+  // Look the user up first so this script is safe to run more than once.
   const { data: list, error: listErr } = await admin.auth.admin.listUsers({ perPage: 200 });
   if (listErr) throw listErr;
   const existing = list.users.find((u) => u.email?.toLowerCase() === email);
 
   if (existing) {
-    const { data, error } = await admin.auth.admin.updateUserById(existing.id, {
-      password,
-      email_confirm: true,
-      user_metadata: { full_name: fullName },
-    });
-    if (error) throw error;
-    console.log(
-      `Updated existing user ${email} (id=${data.user.id}) — password reset, email confirmed.`,
-    );
-    return data.user;
+    // Deliberately DELETE + re-CREATE instead of updateUserById(): users
+    // originally inserted via raw SQL (like our old migration did) can be
+    // left in a state password-grant login rejects even after a password
+    // update — confirmed by community reports where updateUserById alone
+    // did not fix a raw-SQL-created user. Delete + recreate through the
+    // Admin API guarantees the row is built entirely by GoTrue's own code
+    // path. FK cascades (profiles.id, user_roles.user_id ->
+    // auth.users.id ON DELETE CASCADE) clean up the linked rows
+    // automatically; we recreate them below regardless.
+    const { error: delErr } = await admin.auth.admin.deleteUser(existing.id);
+    if (delErr) throw delErr;
+    console.log(`Deleted pre-existing (possibly broken) user ${email} (id=${existing.id}).`);
   }
 
   const { data, error } = await admin.auth.admin.createUser({
@@ -103,6 +114,27 @@ async function linkProfileAndRole(user, clinicId, fullName, role) {
   console.log(`Linked ${user.email} -> profile + role "${role}" in clinic ${clinicId}.`);
 }
 
+async function verifyLogin() {
+  if (!ANON_KEY) {
+    console.log(
+      "\n(Skipping live sign-in check — set SUPABASE_ANON_KEY to have this script actually call signInWithPassword and confirm it end-to-end.)",
+    );
+    return;
+  }
+  const anon = createClient(SUPABASE_URL, ANON_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  console.log("\nVerifying real sign-in (same call the app makes)...");
+  for (const u of TEST_USERS) {
+    const { error } = await anon.auth.signInWithPassword({ email: u.email, password: u.password });
+    if (error) {
+      console.error(`  ✗ ${u.email}: ${error.message}`);
+    } else {
+      console.log(`  ✓ ${u.email}: login OK`);
+    }
+  }
+}
+
 async function main() {
   const clinicId = await ensureClinic();
   for (const u of TEST_USERS) {
@@ -113,6 +145,7 @@ async function main() {
   for (const u of TEST_USERS) {
     console.log(`  ${u.email.split("@")[0]} / ${u.password}  (role: ${u.role})`);
   }
+  await verifyLogin();
 }
 
 main().catch((err) => {
