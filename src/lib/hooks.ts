@@ -66,6 +66,22 @@ export function useProcedures(clinicId?: string | null) {
   });
 }
 
+export function useInsuranceProviders(clinicId?: string | null) {
+  return useQuery({
+    queryKey: ["insurance-providers", clinicId],
+    enabled: !!clinicId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("insurance_providers")
+        .select("*")
+        .eq("clinic_id", clinicId!)
+        .order("name");
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
 export function useNotificationSettings(clinicId?: string | null) {
   return useQuery({
     queryKey: ["notification-settings", clinicId],

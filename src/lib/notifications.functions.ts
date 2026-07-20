@@ -6,10 +6,11 @@ const schema = z.object({
   appointmentId: z.string().uuid(),
   emailPatient: z.boolean().default(true),
   whatsappPatient: z.boolean().default(true),
+  smsPatient: z.boolean().default(false),
 });
 
 /**
- * Send the "appointment scheduled" confirmation to the patient (email + WhatsApp).
+ * Send the "appointment scheduled" confirmation to the patient (email + WhatsApp + optional SMS).
  * Verifies the appointment belongs to the caller's clinic before sending.
  */
 export const sendAppointmentConfirmation = createServerFn({ method: "POST" })
@@ -31,6 +32,7 @@ export const sendAppointmentConfirmation = createServerFn({ method: "POST" })
     const result = await dispatchAppointmentNotifications(data.appointmentId, "confirmation", {
       emailPatient: data.emailPatient,
       whatsappPatient: data.whatsappPatient,
+      smsPatient: data.smsPatient,
       notifyProfessional: false,
     });
     return { ok: true, ...result };

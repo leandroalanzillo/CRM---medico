@@ -3,7 +3,7 @@
 // email domain is configured) via Lovable Emails. Every attempt is logged to
 // public.notification_log. Never import this file from client code.
 
-type Channel = "email" | "whatsapp";
+type Channel = "email" | "whatsapp" | "sms";
 type RecipientType = "patient" | "professional";
 type Kind = "confirmation" | "reminder";
 
@@ -26,12 +26,17 @@ function onlyDigits(v: string | null | undefined): string {
 
 function fmtDate(d: Date): string {
   return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit", month: "2-digit", year: "numeric", timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "America/Sao_Paulo",
   }).format(d);
 }
 function fmtTime(d: Date): string {
   return new Intl.DateTimeFormat("pt-BR", {
-    hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "America/Sao_Paulo",
   }).format(d);
 }
 
@@ -83,9 +88,46 @@ async function sendEmail(
   return { ok: false, skipped: true, error: "E-mail ainda não ativado (domínio pendente)" };
 }
 
+/**
+ * Send an SMS via Twilio's REST API. Any Twilio-compatible provider works
+ * the same way (same auth scheme); swap the URL/credentials if using
+ * another vendor. Disabled by default at the clinic level
+ * (notification_settings.notify_patient_sms) since SMS has a real per-message
+ * cost, unlike WhatsApp/email.
+ */
+async function sendSMS(phone: string, body: string): Promise<{ ok: boolean; error?: string }> {
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  const from = process.env.TWILIO_FROM_NUMBER;
+  if (!sid || !token || !from) {
+    return { ok: false, error: "SMS não configurado (credenciais do provedor ausentes)" };
+  }
+  const to = onlyDigits(phone);
+  if (!to) return { ok: false, error: "Telefone inválido" };
+
+  try {
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ To: `+55${to}`, From: from, Body: body }),
+    });
+    if (!res.ok) {
+      const errBody = await res.text();
+      return { ok: false, error: `SMS [${res.status}]: ${errBody.slice(0, 400)}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: `SMS: ${(e as Error).message}` };
+  }
+}
+
 interface DispatchOptions {
   emailPatient?: boolean;
   whatsappPatient?: boolean;
+  smsPatient?: boolean;
   notifyProfessional?: boolean;
 }
 
@@ -94,7 +136,12 @@ interface ApptRecord {
   clinic_id: string;
   starts_at: string;
   clinic: { name: string | null } | null;
-  patient: { full_name: string | null; email: string | null; whatsapp: string | null; phone: string | null } | null;
+  patient: {
+    full_name: string | null;
+    email: string | null;
+    whatsapp: string | null;
+    phone: string | null;
+  } | null;
   professional: { name: string | null; email: string | null; phone: string | null } | null;
 }
 
@@ -152,10 +199,28 @@ export async function dispatchAppointmentNotifications(
   if (opts.whatsappPatient) {
     const phone = record.patient?.whatsapp || record.patient?.phone || null;
     if (!phone) {
-      track({ clinic_id: record.clinic_id, appointment_id: record.id, channel: "whatsapp", recipient_type: "patient", recipient: null, kind, status: "skipped", error: "Paciente sem WhatsApp" });
+      track({
+        clinic_id: record.clinic_id,
+        appointment_id: record.id,
+        channel: "whatsapp",
+        recipient_type: "patient",
+        recipient: null,
+        kind,
+        status: "skipped",
+        error: "Paciente sem WhatsApp",
+      });
     } else {
       const r = await sendWhatsApp(phone, msg.patient);
-      track({ clinic_id: record.clinic_id, appointment_id: record.id, channel: "whatsapp", recipient_type: "patient", recipient: phone, kind, status: r.ok ? "sent" : "failed", error: r.error });
+      track({
+        clinic_id: record.clinic_id,
+        appointment_id: record.id,
+        channel: "whatsapp",
+        recipient_type: "patient",
+        recipient: phone,
+        kind,
+        status: r.ok ? "sent" : "failed",
+        error: r.error,
+      });
     }
   }
 
@@ -163,10 +228,57 @@ export async function dispatchAppointmentNotifications(
   if (opts.emailPatient) {
     const email = record.patient?.email || null;
     if (!email) {
-      track({ clinic_id: record.clinic_id, appointment_id: record.id, channel: "email", recipient_type: "patient", recipient: null, kind, status: "skipped", error: "Paciente sem e-mail" });
+      track({
+        clinic_id: record.clinic_id,
+        appointment_id: record.id,
+        channel: "email",
+        recipient_type: "patient",
+        recipient: null,
+        kind,
+        status: "skipped",
+        error: "Paciente sem e-mail",
+      });
     } else {
       const r = await sendEmail(email, msg.subject, msg.patient);
-      track({ clinic_id: record.clinic_id, appointment_id: record.id, channel: "email", recipient_type: "patient", recipient: email, kind, status: r.ok ? "sent" : r.skipped ? "skipped" : "failed", error: r.error });
+      track({
+        clinic_id: record.clinic_id,
+        appointment_id: record.id,
+        channel: "email",
+        recipient_type: "patient",
+        recipient: email,
+        kind,
+        status: r.ok ? "sent" : r.skipped ? "skipped" : "failed",
+        error: r.error,
+      });
+    }
+  }
+
+  // ---- Patient: SMS ----
+  if (opts.smsPatient) {
+    const phone = record.patient?.whatsapp || record.patient?.phone || null;
+    if (!phone) {
+      track({
+        clinic_id: record.clinic_id,
+        appointment_id: record.id,
+        channel: "sms",
+        recipient_type: "patient",
+        recipient: null,
+        kind,
+        status: "skipped",
+        error: "Paciente sem telefone",
+      });
+    } else {
+      const r = await sendSMS(phone, msg.patient);
+      track({
+        clinic_id: record.clinic_id,
+        appointment_id: record.id,
+        channel: "sms",
+        recipient_type: "patient",
+        recipient: phone,
+        kind,
+        status: r.ok ? "sent" : "failed",
+        error: r.error,
+      });
     }
   }
 
@@ -175,12 +287,30 @@ export async function dispatchAppointmentNotifications(
     const proPhone = record.professional?.phone || null;
     if (proPhone) {
       const r = await sendWhatsApp(proPhone, msg.professional);
-      track({ clinic_id: record.clinic_id, appointment_id: record.id, channel: "whatsapp", recipient_type: "professional", recipient: proPhone, kind, status: r.ok ? "sent" : "failed", error: r.error });
+      track({
+        clinic_id: record.clinic_id,
+        appointment_id: record.id,
+        channel: "whatsapp",
+        recipient_type: "professional",
+        recipient: proPhone,
+        kind,
+        status: r.ok ? "sent" : "failed",
+        error: r.error,
+      });
     }
     const proEmail = record.professional?.email || null;
     if (proEmail) {
       const r = await sendEmail(proEmail, msg.subject, msg.professional);
-      track({ clinic_id: record.clinic_id, appointment_id: record.id, channel: "email", recipient_type: "professional", recipient: proEmail, kind, status: r.ok ? "sent" : r.skipped ? "skipped" : "failed", error: r.error });
+      track({
+        clinic_id: record.clinic_id,
+        appointment_id: record.id,
+        channel: "email",
+        recipient_type: "professional",
+        recipient: proEmail,
+        kind,
+        status: r.ok ? "sent" : r.skipped ? "skipped" : "failed",
+        error: r.error,
+      });
     }
   }
 

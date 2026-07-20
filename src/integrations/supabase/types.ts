@@ -753,10 +753,12 @@ export type Database = {
           created_at: string;
           id: string;
           notify_patient_email: boolean;
+          notify_patient_sms: boolean;
           notify_patient_whatsapp: boolean;
           notify_professional: boolean;
           reminder_enabled: boolean;
           reminder_hour: number;
+          reminder_hours_before: number;
           updated_at: string;
         };
         Insert: {
@@ -764,10 +766,12 @@ export type Database = {
           created_at?: string;
           id?: string;
           notify_patient_email?: boolean;
+          notify_patient_sms?: boolean;
           notify_patient_whatsapp?: boolean;
           notify_professional?: boolean;
           reminder_enabled?: boolean;
           reminder_hour?: number;
+          reminder_hours_before?: number;
           updated_at?: string;
         };
         Update: {
@@ -775,10 +779,12 @@ export type Database = {
           created_at?: string;
           id?: string;
           notify_patient_email?: boolean;
+          notify_patient_sms?: boolean;
           notify_patient_whatsapp?: boolean;
           notify_professional?: boolean;
           reminder_enabled?: boolean;
           reminder_hour?: number;
+          reminder_hours_before?: number;
           updated_at?: string;
         };
         Relationships: [
@@ -894,6 +900,7 @@ export type Database = {
           id: string;
           insurance: string | null;
           insurance_card: string | null;
+          insurance_provider_id: string | null;
           kind: Database["public"]["Enums"]["patient_kind"];
           last_contact_at: string | null;
           notes: string | null;
@@ -918,6 +925,7 @@ export type Database = {
           id?: string;
           insurance?: string | null;
           insurance_card?: string | null;
+          insurance_provider_id?: string | null;
           kind?: Database["public"]["Enums"]["patient_kind"];
           last_contact_at?: string | null;
           notes?: string | null;
@@ -942,6 +950,7 @@ export type Database = {
           id?: string;
           insurance?: string | null;
           insurance_card?: string | null;
+          insurance_provider_id?: string | null;
           kind?: Database["public"]["Enums"]["patient_kind"];
           last_contact_at?: string | null;
           notes?: string | null;
@@ -965,6 +974,63 @@ export type Database = {
             columns: ["professional_id"];
             isOneToOne: false;
             referencedRelation: "professionals";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "patients_insurance_provider_id_fkey";
+            columns: ["insurance_provider_id"];
+            isOneToOne: false;
+            referencedRelation: "insurance_providers";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      insurance_providers: {
+        Row: {
+          active: boolean;
+          ans_registry: string | null;
+          clinic_id: string;
+          created_at: string;
+          email: string | null;
+          id: string;
+          name: string;
+          notes: string | null;
+          phone: string | null;
+          reimbursement_days: number | null;
+          updated_at: string;
+        };
+        Insert: {
+          active?: boolean;
+          ans_registry?: string | null;
+          clinic_id: string;
+          created_at?: string;
+          email?: string | null;
+          id?: string;
+          name: string;
+          notes?: string | null;
+          phone?: string | null;
+          reimbursement_days?: number | null;
+          updated_at?: string;
+        };
+        Update: {
+          active?: boolean;
+          ans_registry?: string | null;
+          clinic_id?: string;
+          created_at?: string;
+          email?: string | null;
+          id?: string;
+          name?: string;
+          notes?: string | null;
+          phone?: string | null;
+          reimbursement_days?: number | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "insurance_providers_clinic_id_fkey";
+            columns: ["clinic_id"];
+            isOneToOne: false;
+            referencedRelation: "clinics";
             referencedColumns: ["id"];
           },
         ];
