@@ -40,7 +40,13 @@ function AuthPage() {
       password,
     });
     setLoading(false);
-    if (error) return toast.error("Usuário ou senha inválidos.");
+    if (error) {
+      // Surface the real reason (wrong password vs. unconfirmed email vs.
+      // banned/missing user, etc.) instead of hiding it behind one generic
+      // message — makes this diagnosable from the UI/console.
+      console.error("[auth] signInWithPassword failed:", error.message);
+      return toast.error(error.message || "Usuário ou senha inválidos.");
+    }
     toast.success("Bem-vindo de volta!");
     navigate({ to: "/dashboard" });
   }
@@ -59,8 +65,8 @@ function AuthPage() {
             Toda a jornada do paciente em um só lugar.
           </h1>
           <p className="max-w-md text-sidebar-foreground/70">
-            CRM Kanban, agenda inteligente, prontuário eletrônico, produção e atendimento —
-            pensado para clínicas médicas e odontológicas.
+            CRM Kanban, agenda inteligente, prontuário eletrônico, produção e atendimento — pensado
+            para clínicas médicas e odontológicas.
           </p>
         </div>
         <p className="text-sm text-sidebar-foreground/50">Seguro · LGPD · Multi-profissional</p>

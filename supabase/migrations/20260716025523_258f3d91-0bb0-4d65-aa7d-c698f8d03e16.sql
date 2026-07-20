@@ -4,65 +4,27 @@
 -- (see src/routes/auth.tsx -> toEmail()). These are internal-only
 -- addresses, never sent real mail, just Supabase Auth's user key.
 --
--- ⚠️ Test-only credentials (admin123@ for both). Replace with strong,
--- distinct passwords before any real patient data touches this
--- project.
+-- NOTE: an earlier version of this migration created the auth.users /
+-- auth.identities rows directly via SQL (crypt()/gen_salt()). That
+-- turned out to be fragile: it ran without SQL error but the accounts
+-- still couldn't log in, most likely due to GoTrue Auth schema
+-- differences on this project's Supabase version that a raw INSERT
+-- can't account for. User creation now happens via the Admin API
+-- instead — run:
+--
+--   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/seed-test-users.mjs
+--
+-- That script is authoritative (implemented by GoTrue itself) and
+-- also performs the profile/role linking below, so this migration
+-- only needs to guarantee the linking logic runs for anyone who
+-- already has these two auth.users rows from another source — it's a
+-- no-op if they don't exist yet.
+--
+-- ⚠️ Test-only credentials (admin123@ for both, set in the script
+-- above). Replace with strong, distinct passwords before any real
+-- patient data touches this project.
 
-CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
-
-INSERT INTO auth.users (
-  instance_id, id, aud, role, email, encrypted_password,
-  email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
-  created_at, updated_at,
-  confirmation_token, recovery_token, email_change_token_new, email_change
-)
-SELECT
-  '00000000-0000-0000-0000-000000000000',
-  gen_random_uuid(),
-  'authenticated',
-  'authenticated',
-  'admin@clinica.local',
-  extensions.crypt('admin123@', extensions.gen_salt('bf')),
-  now(),
-  '{"provider":"email","providers":["email"]}',
-  '{"full_name":"Administrador"}',
-  now(), now(),
-  '', '', '', ''
-WHERE NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'admin@clinica.local');
-
-INSERT INTO auth.users (
-  instance_id, id, aud, role, email, encrypted_password,
-  email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
-  created_at, updated_at,
-  confirmation_token, recovery_token, email_change_token_new, email_change
-)
-SELECT
-  '00000000-0000-0000-0000-000000000000',
-  gen_random_uuid(),
-  'authenticated',
-  'authenticated',
-  'recepcionista@clinica.local',
-  extensions.crypt('admin123@', extensions.gen_salt('bf')),
-  now(),
-  '{"provider":"email","providers":["email"]}',
-  '{"full_name":"Recepcionista"}',
-  now(), now(),
-  '', '', '', ''
-WHERE NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'recepcionista@clinica.local');
-
--- One identity row per user for the 'email' provider (required by some
--- GoTrue versions for password-grant sign-in to resolve the identity).
-INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
-SELECT gen_random_uuid(), u.id::text, u.id,
-       jsonb_build_object('sub', u.id::text, 'email', u.email),
-       'email', now(), now(), now()
-FROM auth.users u
-WHERE u.email IN ('admin@clinica.local', 'recepcionista@clinica.local')
-  AND NOT EXISTS (
-    SELECT 1 FROM auth.identities i WHERE i.user_id = u.id AND i.provider = 'email'
-  );
-
--- ============ Confirm e-mail + link profiles/roles ============
+-- Confirm receptionist email and set up profiles/roles for both accounts
 UPDATE auth.users SET email_confirmed_at = COALESCE(email_confirmed_at, now()) WHERE email IN ('admin@clinica.local','recepcionista@clinica.local');
 
 DO $$
