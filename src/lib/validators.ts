@@ -46,17 +46,25 @@ export function isValidCPF(value: string): boolean {
 export function isValidRegistration(value: string): boolean {
   const v = (value ?? "").trim();
   if (!v) return true;
-  const pattern = /^(?:[A-Z]{2,6}\/?)?\s?\d{3,7}[\s/-]?([A-Z]{2})$/i;
-  return pattern.test(v);
+  // UF can appear right after the council prefix ("CRM/SP 123456") or at
+  // the end ("123456/SP", "123456 SP") — both are common in the wild, so
+  // both capture groups are checked; at least one must match.
+  const pattern = /^(?:[A-Z]{2,6}\/?)?\s?(?:([A-Z]{2})[\s/])?\d{3,7}(?:[\s/-]?([A-Z]{2}))?$/i;
+  const m = v.match(pattern);
+  return !!m && !!(m[1] || m[2]);
 }
 
 /** Normalizes a registration string to "CRM/UF 000000" style for display. */
 export function formatRegistration(value: string): string {
   const v = (value ?? "").trim();
   if (!v) return "";
-  const match = v.match(/^(?:([A-Z]{2,6})\/?\s?)?(\d{3,7})[\s/-]?([A-Z]{2})$/i);
+  const match = v.match(
+    /^(?:([A-Z]{2,6})\/?\s?)?(?:([A-Z]{2})[\s/])?(\d{3,7})(?:[\s/-]?([A-Z]{2}))?$/i,
+  );
   if (!match) return v;
-  const [, council, number, uf] = match;
+  const [, council, ufBefore, number, ufAfter] = match;
+  const uf = ufBefore ?? ufAfter;
+  if (!uf) return v;
   return `${(council || "CRM").toUpperCase()}/${uf.toUpperCase()} ${number}`;
 }
 

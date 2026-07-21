@@ -27,7 +27,7 @@ export const fmtTime = (d: string | Date | null | undefined) =>
     : "—";
 
 export const initials = (name?: string | null) =>
-  (name ?? "?")
+  (name?.trim() || "?")
     .split(" ")
     .filter(Boolean)
     .slice(0, 2)
