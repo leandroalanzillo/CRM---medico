@@ -12,6 +12,8 @@ import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { WA_STATUS } from "@/lib/format";
 import { WhatsAppConnectDialog } from "@/components/whatsapp-connect-dialog";
+import { WhatsAppInbox } from "@/components/whatsapp-inbox";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 export const Route = createFileRoute("/_authenticated/atendimentos")({
   component: AtendimentosPage,
@@ -86,63 +88,76 @@ function AtendimentosPage() {
 
       <WhatsAppConnectDialog open={waDialogOpen} onOpenChange={setWaDialogOpen} />
 
-      <div className="grid gap-4">
-        <Card>
-          <CardHeader className="gap-2">
-            <CardTitle className="text-base">Pacientes com WhatsApp</CardTitle>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                className="pl-9"
-                placeholder="Buscar paciente por nome ou telefone…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-            {search && (
-              <p className="text-xs text-muted-foreground">
-                {filtered.length} paciente{filtered.length === 1 ? "" : "s"} encontrado
-                {filtered.length === 1 ? "" : "s"} — clique em um para abrir o WhatsApp.
-              </p>
-            )}
-          </CardHeader>
-          <CardContent>
-            {filtered.length > 0 ? (
-              <div className="divide-y">
-                {filtered.map((p) => (
-                  <a
-                    key={p.id}
-                    href={waLink(p.phone ?? "", DEFAULT_TEMPLATE)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center justify-between gap-3 py-3 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{p.full_name}</p>
-                      <p className="text-sm text-muted-foreground">{p.phone}</p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      tabIndex={-1}
-                      className="pointer-events-none"
-                    >
-                      <MessageCircle className="size-4" /> Abrir WhatsApp
-                      <ExternalLink className="size-3 opacity-60" />
-                    </Button>
-                  </a>
-                ))}
-              </div>
-            ) : (
-              <EmptyState
-                icon={MessageCircle}
-                title="Nenhum paciente com telefone"
-                description="Cadastre o telefone (com DDD e DDI, ex.: 55 11 99999-0000) na ficha do paciente para abrir conversas por aqui."
-              />
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <Tabs defaultValue="inbox">
+        <TabsList className="mb-4">
+          <TabsTrigger value="inbox">Conversas</TabsTrigger>
+          <TabsTrigger value="quick">Busca rápida</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="inbox">
+          <WhatsAppInbox />
+        </TabsContent>
+
+        <TabsContent value="quick">
+          <div className="grid gap-4">
+            <Card>
+              <CardHeader className="gap-2">
+                <CardTitle className="text-base">Pacientes com WhatsApp</CardTitle>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    className="pl-9"
+                    placeholder="Buscar paciente por nome ou telefone…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </div>
+                {search && (
+                  <p className="text-xs text-muted-foreground">
+                    {filtered.length} paciente{filtered.length === 1 ? "" : "s"} encontrado
+                    {filtered.length === 1 ? "" : "s"} — clique em um para abrir o WhatsApp.
+                  </p>
+                )}
+              </CardHeader>
+              <CardContent>
+                {filtered.length > 0 ? (
+                  <div className="divide-y">
+                    {filtered.map((p) => (
+                      <a
+                        key={p.id}
+                        href={waLink(p.phone ?? "", DEFAULT_TEMPLATE)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center justify-between gap-3 py-3 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">{p.full_name}</p>
+                          <p className="text-sm text-muted-foreground">{p.phone}</p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          tabIndex={-1}
+                          className="pointer-events-none"
+                        >
+                          <MessageCircle className="size-4" /> Abrir WhatsApp
+                          <ExternalLink className="size-3 opacity-60" />
+                        </Button>
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon={MessageCircle}
+                    title="Nenhum paciente com telefone"
+                    description="Cadastre o telefone (com DDD e DDI, ex.: 55 11 99999-0000) na ficha do paciente para abrir conversas por aqui."
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
