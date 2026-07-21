@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useApp } from "@/lib/app-context";
+import { useApp, type AppRole } from "@/lib/app-context";
 import { formatPhone, isValidEmail, isValidRegistration } from "@/lib/validators";
+import { ROLE_LABELS } from "@/lib/format";
 import type { Database } from "@/integrations/supabase/types";
 import {
   Dialog,
@@ -17,7 +18,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Loader2, X } from "lucide-react";
+
+const ALL_ROLES: AppRole[] = ["admin", "manager", "receptionist", "professional", "commercial"];
 
 type Professional = Database["public"]["Tables"]["professionals"]["Row"];
 
@@ -54,6 +65,49 @@ export function ProfessionalDialog({
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState(empty);
+
+  const linkedUserId = professional?.user_id ?? null;
+  const { data: linkedRoles } = useQuery({
+    queryKey: ["professional-roles", linkedUserId],
+    enabled: !!linkedUserId,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", linkedUserId!)
+        .eq("clinic_id", clinic!.id);
+      return (data ?? []).map((r) => r.role);
+    },
+  });
+
+  async function addRole(role: AppRole) {
+    if (!linkedUserId || !clinic) return;
+    const { error } = await supabase
+      .from("user_roles")
+      .upsert(
+        { user_id: linkedUserId, clinic_id: clinic.id, role },
+        { onConflict: "user_id,role" },
+      );
+    if (error) return toast.error("Não foi possível adicionar a permissão.");
+    queryClient.invalidateQueries({ queryKey: ["professional-roles", linkedUserId] });
+    queryClient.invalidateQueries({ queryKey: ["members", clinic.id] });
+  }
+
+  async function removeRole(role: AppRole) {
+    if (!linkedUserId || !clinic) return;
+    if ((linkedRoles?.length ?? 0) <= 1) {
+      return toast.error("O usuário precisa de pelo menos uma permissão.");
+    }
+    const { error } = await supabase
+      .from("user_roles")
+      .delete()
+      .eq("user_id", linkedUserId)
+      .eq("clinic_id", clinic.id)
+      .eq("role", role);
+    if (error) return toast.error("Não foi possível remover a permissão.");
+    queryClient.invalidateQueries({ queryKey: ["professional-roles", linkedUserId] });
+    queryClient.invalidateQueries({ queryKey: ["members", clinic.id] });
+  }
 
   useEffect(() => {
     if (open) {
@@ -199,6 +253,47 @@ export function ProfessionalDialog({
               ))}
             </div>
           </div>
+
+          {professional && linkedUserId && (
+            <div className="space-y-2 rounded-lg border p-3">
+              <Label className="text-sm">Permissões de acesso ao CRM</Label>
+              <div className="flex flex-wrap items-center gap-1">
+                {linkedRoles?.map((r) => (
+                  <Badge key={r} variant="secondary" className="gap-1 pr-1">
+                    {ROLE_LABELS[r]}
+                    <button
+                      type="button"
+                      onClick={() => removeRole(r as AppRole)}
+                      className="rounded-full p-0.5 hover:bg-muted-foreground/20"
+                      aria-label={`Remover permissão ${ROLE_LABELS[r]}`}
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </Badge>
+                ))}
+                <Select onValueChange={(v) => addRole(v as AppRole)}>
+                  <SelectTrigger className="h-7 w-44 text-xs">
+                    <SelectValue placeholder="+ Adicionar permissão" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ALL_ROLES.filter((r) => !linkedRoles?.includes(r)).map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {ROLE_LABELS[r]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
+          {professional && !linkedUserId && (
+            <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+              Este profissional não tem uma conta de login vinculada, então não tem permissões de
+              acesso ao CRM ainda — é só um registro para aparecer na agenda. Para dar acesso ao
+              sistema, crie o login em Configurações → Usuários & Permissões.
+            </p>
+          )}
 
           {professional && (
             <div className="flex items-center justify-between rounded-lg border p-3">

@@ -31,6 +31,7 @@ import {
   NEGOTIATION_STATUS,
 } from "@/lib/format";
 import { addTimeline } from "@/lib/crm";
+import { useProcedures } from "@/lib/hooks";
 import {
   ArrowLeft,
   Pencil,
@@ -66,6 +67,8 @@ function Field({ label, value }: { label: string; value?: string | null }) {
 function PatientProfile() {
   const { id } = useParams({ from: "/_authenticated/pacientes/$id" });
   const { clinic, canViewClinical } = useApp();
+  const queryClient = useQueryClient();
+  const { data: procedures } = useProcedures(clinic?.id);
   const [edit, setEdit] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [negOpen, setNegOpen] = useState(false);
@@ -100,12 +103,23 @@ function PatientProfile() {
     queryFn: async () => {
       const { data } = await supabase
         .from("appointments")
-        .select("*, professional:professionals(name)")
+        .select(
+          "*, professional:professionals(name), procedure:procedures(id, name, default_price)",
+        )
         .eq("patient_id", id)
         .order("starts_at", { ascending: false });
       return data ?? [];
     },
   });
+
+  async function updateAppointmentProcedure(appointmentId: string, procedureId: string | null) {
+    const { error } = await supabase
+      .from("appointments")
+      .update({ procedure_id: procedureId })
+      .eq("id", appointmentId);
+    if (error) return toast.error("Não foi possível atualizar o procedimento.");
+    queryClient.invalidateQueries({ queryKey: ["patient-appts", id] });
+  }
 
   // Drives the "próxima consulta" marker in the header — the whole reason
   // a patient shows up (or doesn't) in Agenda/Planilha is whether they have
@@ -272,16 +286,36 @@ function PatientProfile() {
           {appointments && appointments.length > 0 ? (
             <div className="grid gap-3">
               {appointments.map((a) => (
-                <Card key={a.id} className="flex items-center justify-between p-4">
-                  <div>
+                <Card key={a.id} className="flex items-center justify-between gap-4 p-4">
+                  <div className="min-w-0">
                     <p className="font-medium">{a.title || "Consulta"}</p>
                     <p className="text-sm text-muted-foreground">
                       {fmtDateTime(a.starts_at)} · {a.professional?.name}
                     </p>
                   </div>
-                  <Badge className={APPOINTMENT_STATUS[a.status].className}>
-                    {APPOINTMENT_STATUS[a.status].label}
-                  </Badge>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Select
+                      value={a.procedure_id ?? "none"}
+                      onValueChange={(v) =>
+                        updateAppointmentProcedure(a.id, v === "none" ? null : v)
+                      }
+                    >
+                      <SelectTrigger className="h-8 w-44 text-xs">
+                        <SelectValue placeholder="Procedimento" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sem procedimento</SelectItem>
+                        {procedures?.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Badge className={APPOINTMENT_STATUS[a.status].className}>
+                      {APPOINTMENT_STATUS[a.status].label}
+                    </Badge>
+                  </div>
                 </Card>
               ))}
             </div>

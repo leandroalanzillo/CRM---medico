@@ -40,6 +40,7 @@ import {
   Percent,
   UserPlus,
   Activity,
+  ShieldPlus,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({ component: DashboardPage });
@@ -101,7 +102,9 @@ function DashboardPage() {
       const [patients, appts, negs, tx] = await Promise.all([
         supabase
           .from("patients")
-          .select("id, kind, active, created_at, professional_id, source")
+          .select(
+            "id, kind, active, created_at, professional_id, source, insurance, insurance_provider_id",
+          )
           .eq("clinic_id", cid),
         supabase
           .from("appointments")
@@ -164,6 +167,12 @@ function DashboardPage() {
       (p) => p.active !== false && !patientsWithFuture.has(p.id),
     ).length;
 
+    const activePatients = P.filter((p) => p.active !== false);
+    const withInsurance = activePatients.filter(
+      (p) => p.insurance_provider_id || p.insurance?.trim(),
+    ).length;
+    const withoutInsurance = activePatients.length - withInsurance;
+
     // Production per professional
     const byProf = (professionals ?? [])
       .map((p, i) => ({
@@ -209,6 +218,8 @@ function DashboardPage() {
       attendance,
       revenue,
       noFutureAppt,
+      withInsurance,
+      withoutInsurance,
       production,
       byProf,
       byStatus,
@@ -314,6 +325,13 @@ function DashboardPage() {
               hint="Ativos, sem nada agendado"
               icon={CalendarClock}
               accent="warning"
+            />
+            <StatCard
+              label="Pacientes com convênio"
+              value={m.withInsurance}
+              hint={`${m.withoutInsurance} sem convênio (particular)`}
+              icon={ShieldPlus}
+              accent="info"
             />
           </div>
 

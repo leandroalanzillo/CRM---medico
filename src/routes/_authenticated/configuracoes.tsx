@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { useApp } from "@/lib/app-context";
+import { useApp, type AppRole } from "@/lib/app-context";
 import { useProfessionals } from "@/lib/hooks";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
@@ -25,11 +25,19 @@ import {
 } from "@/components/ui/alert-dialog";
 import { initials, ROLE_LABELS } from "@/lib/format";
 import { formatRegistration } from "@/lib/validators";
-import { Users, Lock, Plus, Pencil, UserX, UserCheck, Trash2 } from "lucide-react";
+import { Users, Lock, Plus, Pencil, UserX, UserCheck, Trash2, X } from "lucide-react";
 import { NotificationSettings } from "@/components/notification-settings";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { Database } from "@/integrations/supabase/types";
 
 type Professional = Database["public"]["Tables"]["professionals"]["Row"];
+const ALL_ROLES: AppRole[] = ["admin", "manager", "receptionist", "professional", "commercial"];
 
 export const Route = createFileRoute("/_authenticated/configuracoes")({ component: ConfigPage });
 
@@ -93,6 +101,32 @@ function ConfigPage() {
       }));
     },
   });
+
+  async function addRole(userId: string, role: AppRole) {
+    const { error } = await supabase
+      .from("user_roles")
+      .upsert({ user_id: userId, clinic_id: clinic!.id, role }, { onConflict: "user_id,role" });
+    if (error) return toast.error("Não foi possível adicionar a permissão.");
+    toast.success("Permissão adicionada.");
+    queryClient.invalidateQueries({ queryKey: ["members", clinic?.id] });
+  }
+
+  async function removeRole(userId: string, role: AppRole, remainingRoles: string[]) {
+    if (remainingRoles.length <= 1) {
+      return toast.error(
+        "O usuário precisa de pelo menos uma permissão. Adicione outra antes de remover esta.",
+      );
+    }
+    const { error } = await supabase
+      .from("user_roles")
+      .delete()
+      .eq("user_id", userId)
+      .eq("clinic_id", clinic!.id)
+      .eq("role", role);
+    if (error) return toast.error("Não foi possível remover a permissão.");
+    toast.success("Permissão removida.");
+    queryClient.invalidateQueries({ queryKey: ["members", clinic?.id] });
+  }
 
   return (
     <div>
@@ -199,12 +233,32 @@ function ConfigPage() {
                       </AvatarFallback>
                     </Avatar>
                     <p className="flex-1 font-medium">{m.full_name}</p>
-                    <div className="flex gap-1">
+                    <div className="flex flex-wrap items-center gap-1">
                       {m.roles.map((r) => (
-                        <Badge key={r} variant="secondary">
+                        <Badge key={r} variant="secondary" className="gap-1 pr-1">
                           {ROLE_LABELS[r]}
+                          <button
+                            type="button"
+                            onClick={() => removeRole(m.id, r as AppRole, m.roles)}
+                            className="rounded-full p-0.5 hover:bg-muted-foreground/20"
+                            aria-label={`Remover permissão ${ROLE_LABELS[r]}`}
+                          >
+                            <X className="size-3" />
+                          </button>
                         </Badge>
                       ))}
+                      <Select onValueChange={(v) => addRole(m.id, v as AppRole)}>
+                        <SelectTrigger className="h-7 w-40 text-xs">
+                          <SelectValue placeholder="+ Adicionar permissão" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ALL_ROLES.filter((r) => !m.roles.includes(r)).map((r) => (
+                            <SelectItem key={r} value={r}>
+                              {ROLE_LABELS[r]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 ))}
