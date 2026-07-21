@@ -1,38 +1,158 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 
-// Server-only. Runs the scripted lead-intake flow for inbound WhatsApp
-// messages. Deliberately does NOT book appointments directly — it collects
-// intent + contact info and creates/updates a lead in the CRM pipeline for
-// a human to confirm and schedule. Booking automatically from unattended
-// chat input risks double-booking and no-shows nobody actually agreed to.
+// Server-only. Runs an LLM-driven lead-intake flow for inbound WhatsApp
+// messages, using Claude with tool calling to extract structured data
+// (name, motivo, procedimento, período) from a natural conversation
+// instead of a rigid "responda 1, 2 ou 3" menu. The model decides when it
+// has enough info and either creates a lead or hands off to a human —
+// it deliberately never books an appointment or confirms a time itself
+// (no agenda access, and unattended chat shouldn't be able to double-book
+// a slot nobody actually confirmed).
 
-type BotState = {
-  step:
-    "greeting" | "ask_name" | "ask_reason" | "ask_procedure" | "ask_period" | "done" | "handed_off";
-  collected: {
-    name?: string;
-    reason?: "agendar" | "ja_paciente" | "outro";
-    procedure?: string;
-    period?: string;
-  };
+const ANTHROPIC_MODEL = process.env.WHATSAPP_BOT_MODEL || "claude-sonnet-5";
+const MAX_TURNS = 24; // safety cap: force a human handoff instead of looping forever
+
+const SYSTEM_PROMPT = `Você é o assistente virtual de atendimento via WhatsApp de uma clínica médica. Converse como uma recepcionista bem treinada: cordial, natural, direto — nunca como um menu de robô ("responda 1, 2 ou 3").
+
+Seu objetivo, na ordem que fizer sentido conforme a conversa:
+1. Descobrir o nome da pessoa.
+2. Entender o motivo do contato.
+3. Se for para agendar consulta: perguntar (uma coisa de cada vez, sem parecer formulário) qual profissional ou tipo de procedimento ela procura, e qual período costuma ser melhor (manhã, tarde, dia da semana).
+
+Regras importantes:
+- Nunca prometa, confirme ou sugira um horário específico de consulta — você não tem acesso à agenda real. Apenas registre o pedido; a equipe confirma depois.
+- Se a pessoa já for paciente com uma dúvida específica, tiver uma reclamação, ou pedir para falar com um atendente humano, chame a ferramenta finish_conversation com create_lead=false imediatamente, sem tentar resolver sozinho.
+- Se a pessoa mencionar qualquer emergência médica ou risco à vida, oriente-a a ligar para o SAMU (192) ou ir ao pronto-socorro mais próximo, e chame finish_conversation imediatamente.
+- Sempre que souber algo novo (nome, motivo, procedimento, período), chame record_lead_info — pode chamar várias vezes ao longo da conversa, só com os campos que mudaram.
+- Assim que tiver nome + motivo de agendamento claro (mesmo que a pessoa não saiba dizer o procedimento/período exatos), chame finish_conversation com create_lead=true — não prolongue a conversa além do necessário.
+- Mensagens curtas, como se fosse WhatsApp de verdade — não escreva parágrafos longos.`;
+
+const TOOLS = [
+  {
+    name: "record_lead_info",
+    description:
+      "Registra ou atualiza dados coletados do paciente durante a conversa. Chame sempre que aprender algo novo, mesmo que parcial — não precisa esperar ter tudo.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string", description: "Nome completo da pessoa" },
+        reason: {
+          type: "string",
+          enum: ["agendar_consulta", "ja_e_paciente", "duvida_outro"],
+          description: "Motivo do contato",
+        },
+        procedure_or_professional: {
+          type: "string",
+          description: "Procedimento ou profissional desejado, se mencionado",
+        },
+        preferred_period: {
+          type: "string",
+          description: "Período ou dia preferido para a consulta, se mencionado",
+        },
+      },
+    },
+  },
+  {
+    name: "finish_conversation",
+    description:
+      "Encerra a etapa automática da conversa. Chame quando tiver informação suficiente para criar um lead (nome + motivo de agendamento), OU quando a pessoa precisar de um humano (já é paciente, dúvida específica, reclamação, emergência, ou pediu para falar com atendente).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        create_lead: {
+          type: "boolean",
+          description:
+            "true se deve criar/atualizar o lead no CRM com os dados coletados até agora",
+        },
+        handoff_reason: {
+          type: "string",
+          description: "Breve motivo do encerramento, para a equipe interna entender o contexto",
+        },
+      },
+      required: ["create_lead", "handoff_reason"],
+    },
+  },
+];
+
+type LeadInfo = {
+  name?: string;
+  reason?: "agendar_consulta" | "ja_e_paciente" | "duvida_outro";
+  procedure_or_professional?: string;
+  preferred_period?: string;
 };
 
-const GREETING = "Olá! 👋 Aqui é o assistente virtual da clínica. Qual é o seu nome completo?";
+type BotState = {
+  collected: LeadInfo;
+  turns: number;
+};
 
-const REASON_MENU =
-  "Prazer, {name}! Como posso ajudar?\n1 - Agendar uma consulta\n2 - Já sou paciente, outro assunto\n3 - Outro assunto\n\nResponda com o número da opção.";
+interface AnthropicContentBlock {
+  type: "text" | "tool_use";
+  text?: string;
+  id?: string;
+  name?: string;
+  input?: Record<string, unknown>;
+}
 
-const ASK_PROCEDURE =
-  'Show! Qual profissional ou tipo de consulta você procura? (pode ser só o nome ou a especialidade — se não souber, pode escrever "não sei")';
+async function callClaude(
+  history: { role: "user" | "assistant"; content: string }[],
+): Promise<{ text: string; toolCalls: { name: string; input: Record<string, unknown> }[] }> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return {
+      text: "Desculpe, o assistente automático está temporariamente indisponível. Nossa equipe vai te responder em breve.",
+      toolCalls: [
+        {
+          name: "finish_conversation",
+          input: { create_lead: false, handoff_reason: "ANTHROPIC_API_KEY ausente" },
+        },
+      ],
+    };
+  }
 
-const ASK_PERIOD =
-  "Perfeito. Qual período costuma ser melhor pra você — manhã, tarde ou qualquer horário?";
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: ANTHROPIC_MODEL,
+      max_tokens: 512,
+      system: SYSTEM_PROMPT,
+      messages: history.map((m) => ({ role: m.role, content: m.content })),
+      tools: TOOLS,
+    }),
+  });
 
-const DONE_MESSAGE =
-  "Obrigado, {name}! Já registrei seu pedido — nossa equipe entra em contato em breve para confirmar o melhor horário. 🙂";
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    console.error(`[whatsapp-bot] Anthropic API error [${res.status}]:`, body.slice(0, 500));
+    return {
+      text: "Desculpe, tive um problema técnico agora. Nossa equipe vai te responder em breve.",
+      toolCalls: [
+        {
+          name: "finish_conversation",
+          input: { create_lead: false, handoff_reason: "Erro na API do assistente" },
+        },
+      ],
+    };
+  }
 
-const HANDOFF_MESSAGE = "Perfeito, já vou te transferir para nossa equipe, um momento. 🙂";
+  const data = (await res.json()) as { content: AnthropicContentBlock[] };
+  const text = data.content
+    .filter((b) => b.type === "text")
+    .map((b) => b.text ?? "")
+    .join("\n")
+    .trim();
+  const toolCalls = data.content
+    .filter((b) => b.type === "tool_use")
+    .map((b) => ({ name: b.name ?? "", input: b.input ?? {} }));
+
+  return { text, toolCalls };
+}
 
 /**
  * Processes one inbound message for a given clinic/phone, returns the reply
@@ -48,18 +168,17 @@ export async function handleInboundWhatsAppMessage(params: {
 }): Promise<{ reply: string | null; conversationId: string }> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-  // Find or create the conversation for this phone number.
   const { data: existing } = await supabaseAdmin
     .from("conversations")
-    .select("id, bot_state, bot_active, patient_id")
+    .select("id, bot_state, bot_active")
     .eq("clinic_id", params.clinicId)
     .eq("phone", params.phone)
     .maybeSingle();
 
   let conversationId = existing?.id;
-  let state: BotState = (existing?.bot_state as BotState | null) ?? {
-    step: "greeting",
+  const state: BotState = (existing?.bot_state as unknown as BotState | null) ?? {
     collected: {},
+    turns: 0,
   };
   const botActive = existing?.bot_active ?? true;
 
@@ -73,7 +192,8 @@ export async function handleInboundWhatsAppMessage(params: {
         last_message: params.text,
         last_message_at: new Date().toISOString(),
         unread_count: 1,
-        bot_state: state,
+        bot_state:
+          state as unknown as Database["public"]["Tables"]["conversations"]["Insert"]["bot_state"],
       })
       .select("id")
       .single();
@@ -84,7 +204,7 @@ export async function handleInboundWhatsAppMessage(params: {
       .update({
         last_message: params.text,
         last_message_at: new Date().toISOString(),
-        unread_count: (existing ? 1 : 0) + 1,
+        unread_count: 1,
       })
       .eq("id", conversationId);
   }
@@ -97,70 +217,64 @@ export async function handleInboundWhatsAppMessage(params: {
     body: params.text,
   });
 
-  // A human already took over this conversation from the CRM inbox — the
-  // bot goes quiet so it never talks over a staff member mid-conversation.
+  // A human already took over — the bot goes quiet so it never talks over
+  // a staff member mid-conversation.
   if (!botActive) return { reply: null, conversationId };
 
-  const input = params.text.trim();
-  let reply: string;
+  state.turns += 1;
+  if (state.turns > MAX_TURNS) {
+    await handOff(
+      supabaseAdmin,
+      params.clinicId,
+      conversationId,
+      "Conversa longa demais para o fluxo automático",
+    );
+    return { reply: null, conversationId };
+  }
 
-  switch (state.step) {
-    case "greeting": {
-      reply = GREETING;
-      state = { step: "ask_name", collected: {} };
-      break;
-    }
-    case "ask_name": {
-      state.collected.name = input;
-      reply = REASON_MENU.replace("{name}", input.split(" ")[0]);
-      state.step = "ask_reason";
-      break;
-    }
-    case "ask_reason": {
-      const choice = input.replace(/\D/g, "");
-      if (choice === "1") {
-        state.collected.reason = "agendar";
-        reply = ASK_PROCEDURE;
-        state.step = "ask_procedure";
-      } else if (choice === "2") {
-        state.collected.reason = "ja_paciente";
-        reply = HANDOFF_MESSAGE;
-        state.step = "handed_off";
-      } else {
-        state.collected.reason = "outro";
-        reply = HANDOFF_MESSAGE;
-        state.step = "handed_off";
-      }
-      break;
-    }
-    case "ask_procedure": {
-      state.collected.procedure = input;
-      reply = ASK_PERIOD;
-      state.step = "ask_period";
-      break;
-    }
-    case "ask_period": {
-      state.collected.period = input;
-      reply = DONE_MESSAGE.replace("{name}", state.collected.name?.split(" ")[0] ?? "");
-      state.step = "done";
-      await finalizeLead(supabaseAdmin, params.clinicId, params.phone, conversationId, state);
-      break;
-    }
-    default: {
-      // "done" or "handed_off" — flow finished, stay quiet and let a human
-      // pick up the conversation (bot_active gets flipped off from the
-      // inbox once staff actually replies).
-      return { reply: null, conversationId };
+  const { data: pastMessages } = await supabaseAdmin
+    .from("messages")
+    .select("direction, body")
+    .eq("conversation_id", conversationId)
+    .order("created_at")
+    .limit(40);
+
+  const history = (pastMessages ?? []).map((m) => ({
+    role: (m.direction === "outbound" ? "assistant" : "user") as "user" | "assistant",
+    content: m.body,
+  }));
+
+  const { text, toolCalls } = await callClaude(history);
+
+  let shouldFinish = false;
+  let createLead = false;
+
+  for (const call of toolCalls) {
+    if (call.name === "record_lead_info") {
+      const input = call.input as LeadInfo;
+      state.collected = {
+        ...state.collected,
+        ...Object.fromEntries(Object.entries(input).filter(([, v]) => v)),
+      };
+    } else if (call.name === "finish_conversation") {
+      shouldFinish = true;
+      createLead = !!call.input.create_lead;
     }
   }
 
   await supabaseAdmin
     .from("conversations")
     .update({
-      bot_state: state,
-      bot_active: state.step !== "handed_off" && state.step !== "done" ? true : false,
+      bot_state:
+        state as unknown as Database["public"]["Tables"]["conversations"]["Update"]["bot_state"],
     })
     .eq("id", conversationId);
+
+  const reply =
+    text ||
+    (shouldFinish
+      ? "Obrigado pelo contato! Nossa equipe já vai te responder."
+      : "Certo, um momento.");
 
   await supabaseAdmin.from("messages").insert({
     clinic_id: params.clinicId,
@@ -169,7 +283,50 @@ export async function handleInboundWhatsAppMessage(params: {
     body: reply,
   });
 
+  if (shouldFinish) {
+    if (createLead) {
+      await finalizeLead(
+        supabaseAdmin,
+        params.clinicId,
+        params.phone,
+        conversationId,
+        state.collected,
+        params.contactName,
+      );
+    }
+    await handOff(
+      supabaseAdmin,
+      params.clinicId,
+      conversationId,
+      createLead ? "Lead criado pelo assistente" : "Encaminhado pelo assistente",
+    );
+  }
+
   return { reply, conversationId };
+}
+
+async function handOff(
+  supabaseAdmin: SupabaseClient<Database>,
+  clinicId: string,
+  conversationId: string,
+  reason: string,
+) {
+  await supabaseAdmin.from("conversations").update({ bot_active: false }).eq("id", conversationId);
+
+  const { data: staff } = await supabaseAdmin
+    .from("user_roles")
+    .select("user_id")
+    .eq("clinic_id", clinicId)
+    .in("role", ["admin", "manager", "receptionist"]);
+  const rows = (staff ?? []).map((s) => ({
+    clinic_id: clinicId,
+    recipient_id: s.user_id,
+    type: "system" as const,
+    title: "Conversa de WhatsApp aguardando atendimento",
+    body: reason,
+    link: "/atendimentos",
+  }));
+  if (rows.length) await supabaseAdmin.from("app_notifications").insert(rows);
 }
 
 async function finalizeLead(
@@ -177,10 +334,9 @@ async function finalizeLead(
   clinicId: string,
   phone: string,
   conversationId: string,
-  state: BotState,
+  collected: LeadInfo,
+  contactName: string | null,
 ) {
-  // Reuse an existing patient with this phone if there is one, instead of
-  // creating a duplicate — same matching rule used by the Planilha import.
   const { data: existingPatient } = await supabaseAdmin
     .from("patients")
     .select("id")
@@ -191,14 +347,16 @@ async function finalizeLead(
   let patientId = existingPatient?.id;
   if (!patientId) {
     const notesParts = [
-      state.collected.procedure ? `Procedimento desejado: ${state.collected.procedure}` : null,
-      state.collected.period ? `Período preferido: ${state.collected.period}` : null,
+      collected.procedure_or_professional
+        ? `Procedimento desejado: ${collected.procedure_or_professional}`
+        : null,
+      collected.preferred_period ? `Período preferido: ${collected.preferred_period}` : null,
     ].filter(Boolean);
     const { data: created } = await supabaseAdmin
       .from("patients")
       .insert({
         clinic_id: clinicId,
-        full_name: state.collected.name || "Lead via WhatsApp",
+        full_name: collected.name || contactName || "Lead via WhatsApp",
         phone,
         whatsapp: phone,
         kind: "lead",
@@ -216,8 +374,6 @@ async function finalizeLead(
     .update({ patient_id: patientId })
     .eq("id", conversationId);
 
-  // First pipeline stage (lowest position) — same rule patient-dialog.tsx
-  // uses when a receptionist creates a lead manually.
   const { data: existingCard } = await supabaseAdmin
     .from("pipeline_cards")
     .select("id")
@@ -243,10 +399,9 @@ async function finalizeLead(
     clinic_id: clinicId,
     patient_id: patientId,
     event_type: "whatsapp_bot",
-    description: "Lead captado automaticamente pelo assistente de WhatsApp.",
+    description: "Lead captado automaticamente pelo assistente de WhatsApp (Claude).",
   });
 
-  // Notify staff — same pattern as the other automations.
   const { data: staff } = await supabaseAdmin
     .from("user_roles")
     .select("user_id")
@@ -257,8 +412,8 @@ async function finalizeLead(
     recipient_id: s.user_id,
     type: "system" as const,
     title: "Novo lead via WhatsApp",
-    body: `${state.collected.name ?? "Alguém"} entrou em contato pelo WhatsApp querendo agendar${
-      state.collected.procedure ? ` (${state.collected.procedure})` : ""
+    body: `${collected.name ?? "Alguém"} entrou em contato pelo WhatsApp querendo agendar${
+      collected.procedure_or_professional ? ` (${collected.procedure_or_professional})` : ""
     }. Confira em Pacientes.`,
     link: "/pacientes",
   }));
