@@ -107,7 +107,30 @@ export async function getWhatsAppPairingStatus(instanceName: string): Promise<Ev
   }
 }
 
-/** Unlink the device (logout), keeping the instance so it can be re-paired. */
+/** Sends a plain text WhatsApp message through the clinic's Evolution API instance. */
+export async function sendWhatsAppMessage(
+  instanceName: string,
+  phone: string,
+  text: string,
+): Promise<EvoResponse> {
+  const { baseUrl, apiKey, configured } = evoConfig();
+  if (!configured) return { ok: false, error: "Evolution API não configurada." };
+
+  try {
+    const res = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: apiKey! },
+      body: JSON.stringify({ number: phone, text }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      return { ok: false, error: `Evolution API [${res.status}]: ${body.slice(0, 400)}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: `Evolution API: ${(e as Error).message}` };
+  }
+}
 export async function disconnectWhatsApp(instanceName: string): Promise<EvoResponse> {
   const { baseUrl, apiKey, configured } = evoConfig();
   if (!configured) return { ok: false, error: "Evolution API não configurada." };

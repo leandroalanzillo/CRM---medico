@@ -319,6 +319,8 @@ export type Database = {
       conversations: {
         Row: {
           assigned_to: string | null;
+          bot_active: boolean;
+          bot_state: Json | null;
           clinic_id: string;
           contact_name: string | null;
           created_at: string;
@@ -332,6 +334,8 @@ export type Database = {
         };
         Insert: {
           assigned_to?: string | null;
+          bot_active?: boolean;
+          bot_state?: Json | null;
           clinic_id: string;
           contact_name?: string | null;
           created_at?: string;
@@ -345,6 +349,8 @@ export type Database = {
         };
         Update: {
           assigned_to?: string | null;
+          bot_active?: boolean;
+          bot_state?: Json | null;
           clinic_id?: string;
           contact_name?: string | null;
           created_at?: string;

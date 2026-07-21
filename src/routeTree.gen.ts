@@ -26,6 +26,7 @@ import { Route as AuthenticatedPacientesIndexRouteImport } from './routes/_authe
 import { Route as AuthenticatedPacientesIdRouteImport } from './routes/_authenticated/pacientes.$id'
 import { Route as ApiPublicHooksAppointmentRemindersRouteImport } from './routes/api/public/hooks/appointment-reminders'
 import { Route as ApiPublicHooksDailyChecksRouteImport } from './routes/api/public/hooks/daily-checks'
+import { Route as ApiPublicHooksWhatsappInboundRouteImport } from './routes/api/public/hooks/whatsapp-inbound'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -118,6 +119,12 @@ const ApiPublicHooksDailyChecksRoute =
     path: '/api/public/hooks/daily-checks',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksWhatsappInboundRoute =
+  ApiPublicHooksWhatsappInboundRouteImport.update({
+    id: '/api/public/hooks/whatsapp-inbound',
+    path: '/api/public/hooks/whatsapp-inbound',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -136,6 +143,7 @@ export interface FileRoutesByFullPath {
   '/pacientes/': typeof AuthenticatedPacientesIndexRoute
   '/api/public/hooks/appointment-reminders': typeof ApiPublicHooksAppointmentRemindersRoute
   '/api/public/hooks/daily-checks': typeof ApiPublicHooksDailyChecksRoute
+  '/api/public/hooks/whatsapp-inbound': typeof ApiPublicHooksWhatsappInboundRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -154,6 +162,7 @@ export interface FileRoutesByTo {
   '/pacientes': typeof AuthenticatedPacientesIndexRoute
   '/api/public/hooks/appointment-reminders': typeof ApiPublicHooksAppointmentRemindersRoute
   '/api/public/hooks/daily-checks': typeof ApiPublicHooksDailyChecksRoute
+  '/api/public/hooks/whatsapp-inbound': typeof ApiPublicHooksWhatsappInboundRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -174,6 +183,7 @@ export interface FileRoutesById {
   '/_authenticated/pacientes/': typeof AuthenticatedPacientesIndexRoute
   '/api/public/hooks/appointment-reminders': typeof ApiPublicHooksAppointmentRemindersRoute
   '/api/public/hooks/daily-checks': typeof ApiPublicHooksDailyChecksRoute
+  '/api/public/hooks/whatsapp-inbound': typeof ApiPublicHooksWhatsappInboundRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -194,6 +204,7 @@ export interface FileRouteTypes {
     | '/pacientes/'
     | '/api/public/hooks/appointment-reminders'
     | '/api/public/hooks/daily-checks'
+    | '/api/public/hooks/whatsapp-inbound'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -212,6 +223,7 @@ export interface FileRouteTypes {
     | '/pacientes'
     | '/api/public/hooks/appointment-reminders'
     | '/api/public/hooks/daily-checks'
+    | '/api/public/hooks/whatsapp-inbound'
   id:
     | '__root__'
     | '/'
@@ -231,6 +243,7 @@ export interface FileRouteTypes {
     | '/_authenticated/pacientes/'
     | '/api/public/hooks/appointment-reminders'
     | '/api/public/hooks/daily-checks'
+    | '/api/public/hooks/whatsapp-inbound'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -240,6 +253,7 @@ export interface RootRouteChildren {
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   ApiPublicHooksAppointmentRemindersRoute: typeof ApiPublicHooksAppointmentRemindersRoute
   ApiPublicHooksDailyChecksRoute: typeof ApiPublicHooksDailyChecksRoute
+  ApiPublicHooksWhatsappInboundRoute: typeof ApiPublicHooksWhatsappInboundRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -363,6 +377,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksDailyChecksRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/whatsapp-inbound': {
+      id: '/api/public/hooks/whatsapp-inbound'
+      path: '/api/public/hooks/whatsapp-inbound'
+      fullPath: '/api/public/hooks/whatsapp-inbound'
+      preLoaderRoute: typeof ApiPublicHooksWhatsappInboundRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -405,6 +426,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksAppointmentRemindersRoute:
     ApiPublicHooksAppointmentRemindersRoute,
   ApiPublicHooksDailyChecksRoute: ApiPublicHooksDailyChecksRoute,
+  ApiPublicHooksWhatsappInboundRoute: ApiPublicHooksWhatsappInboundRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
