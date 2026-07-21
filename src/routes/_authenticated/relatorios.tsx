@@ -602,7 +602,65 @@ function RelatoriosPage() {
             </TabsContent>
 
             {/* ================= PROCEDURES ================= */}
-            <TabsContent value="procedures">
+            <TabsContent value="procedures" className="grid gap-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Procedimentos mais procurados</CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    Ranking por quantidade de atendimentos finalizados no período — não por receita.
+                  </p>
+                </CardHeader>
+                <CardContent className="h-80">
+                  {r.byProcedure.length === 0 ? (
+                    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                      Sem procedimentos finalizados no período.
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={[...r.byProcedure].sort((a, b) => b.count - a.count).slice(0, 8)}
+                        layout="vertical"
+                        margin={{ left: 8, right: 24 }}
+                      >
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          stroke="var(--border)"
+                          horizontal={false}
+                        />
+                        <XAxis
+                          type="number"
+                          allowDecimals={false}
+                          tick={{ fontSize: 12 }}
+                          stroke="var(--muted-foreground)"
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="name"
+                          width={140}
+                          tick={{ fontSize: 12 }}
+                          stroke="var(--muted-foreground)"
+                        />
+                        <Tooltip
+                          formatter={(v: number) => [
+                            `${v} atendimento${v === 1 ? "" : "s"}`,
+                            "Quantidade",
+                          ]}
+                          contentStyle={{ borderRadius: 12, border: "1px solid var(--border)" }}
+                        />
+                        <Bar dataKey="count" radius={[0, 6, 6, 0]}>
+                          {[...r.byProcedure]
+                            .sort((a, b) => b.count - a.count)
+                            .slice(0, 8)
+                            .map((_, i) => (
+                              <Cell key={i} fill={CHART[i % CHART.length]} />
+                            ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </CardContent>
+              </Card>
+
               <Card>
                 <CardHeader className="flex-row items-center justify-between space-y-0">
                   <CardTitle className="text-base">Receita por procedimento</CardTitle>
