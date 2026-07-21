@@ -18,16 +18,14 @@ import { Route as AuthenticatedAtendimentosRouteImport } from './routes/_authent
 import { Route as AuthenticatedColaboradoresRouteImport } from './routes/_authenticated/colaboradores'
 import { Route as AuthenticatedConfiguracoesRouteImport } from './routes/_authenticated/configuracoes'
 import { Route as AuthenticatedConveniosRouteImport } from './routes/_authenticated/convenios'
-import { Route as AuthenticatedCrmRouteImport } from './routes/_authenticated/crm'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedFinanceiroRouteImport } from './routes/_authenticated/financeiro'
-import { Route as AuthenticatedNegociacoesRouteImport } from './routes/_authenticated/negociacoes'
 import { Route as AuthenticatedPlanilhaRouteImport } from './routes/_authenticated/planilha'
-import { Route as AuthenticatedProducaoRouteImport } from './routes/_authenticated/producao'
 import { Route as AuthenticatedRelatoriosRouteImport } from './routes/_authenticated/relatorios'
 import { Route as AuthenticatedPacientesIndexRouteImport } from './routes/_authenticated/pacientes.index'
 import { Route as AuthenticatedPacientesIdRouteImport } from './routes/_authenticated/pacientes.$id'
 import { Route as ApiPublicHooksAppointmentRemindersRouteImport } from './routes/api/public/hooks/appointment-reminders'
+import { Route as ApiPublicHooksDailyChecksRouteImport } from './routes/api/public/hooks/daily-checks'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -76,11 +74,6 @@ const AuthenticatedConveniosRoute = AuthenticatedConveniosRouteImport.update({
   path: '/convenios',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedCrmRoute = AuthenticatedCrmRouteImport.update({
-  id: '/crm',
-  path: '/crm',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -91,20 +84,9 @@ const AuthenticatedFinanceiroRoute = AuthenticatedFinanceiroRouteImport.update({
   path: '/financeiro',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedNegociacoesRoute =
-  AuthenticatedNegociacoesRouteImport.update({
-    id: '/negociacoes',
-    path: '/negociacoes',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
 const AuthenticatedPlanilhaRoute = AuthenticatedPlanilhaRouteImport.update({
   id: '/planilha',
   path: '/planilha',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedProducaoRoute = AuthenticatedProducaoRouteImport.update({
-  id: '/producao',
-  path: '/producao',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedRelatoriosRoute = AuthenticatedRelatoriosRouteImport.update({
@@ -130,6 +112,12 @@ const ApiPublicHooksAppointmentRemindersRoute =
     path: '/api/public/hooks/appointment-reminders',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksDailyChecksRoute =
+  ApiPublicHooksDailyChecksRouteImport.update({
+    id: '/api/public/hooks/daily-checks',
+    path: '/api/public/hooks/daily-checks',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -140,16 +128,14 @@ export interface FileRoutesByFullPath {
   '/colaboradores': typeof AuthenticatedColaboradoresRoute
   '/configuracoes': typeof AuthenticatedConfiguracoesRoute
   '/convenios': typeof AuthenticatedConveniosRoute
-  '/crm': typeof AuthenticatedCrmRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/financeiro': typeof AuthenticatedFinanceiroRoute
-  '/negociacoes': typeof AuthenticatedNegociacoesRoute
   '/planilha': typeof AuthenticatedPlanilhaRoute
-  '/producao': typeof AuthenticatedProducaoRoute
   '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/pacientes/$id': typeof AuthenticatedPacientesIdRoute
   '/pacientes/': typeof AuthenticatedPacientesIndexRoute
   '/api/public/hooks/appointment-reminders': typeof ApiPublicHooksAppointmentRemindersRoute
+  '/api/public/hooks/daily-checks': typeof ApiPublicHooksDailyChecksRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -160,16 +146,14 @@ export interface FileRoutesByTo {
   '/colaboradores': typeof AuthenticatedColaboradoresRoute
   '/configuracoes': typeof AuthenticatedConfiguracoesRoute
   '/convenios': typeof AuthenticatedConveniosRoute
-  '/crm': typeof AuthenticatedCrmRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/financeiro': typeof AuthenticatedFinanceiroRoute
-  '/negociacoes': typeof AuthenticatedNegociacoesRoute
   '/planilha': typeof AuthenticatedPlanilhaRoute
-  '/producao': typeof AuthenticatedProducaoRoute
   '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/pacientes/$id': typeof AuthenticatedPacientesIdRoute
   '/pacientes': typeof AuthenticatedPacientesIndexRoute
   '/api/public/hooks/appointment-reminders': typeof ApiPublicHooksAppointmentRemindersRoute
+  '/api/public/hooks/daily-checks': typeof ApiPublicHooksDailyChecksRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -182,16 +166,14 @@ export interface FileRoutesById {
   '/_authenticated/colaboradores': typeof AuthenticatedColaboradoresRoute
   '/_authenticated/configuracoes': typeof AuthenticatedConfiguracoesRoute
   '/_authenticated/convenios': typeof AuthenticatedConveniosRoute
-  '/_authenticated/crm': typeof AuthenticatedCrmRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/financeiro': typeof AuthenticatedFinanceiroRoute
-  '/_authenticated/negociacoes': typeof AuthenticatedNegociacoesRoute
   '/_authenticated/planilha': typeof AuthenticatedPlanilhaRoute
-  '/_authenticated/producao': typeof AuthenticatedProducaoRoute
   '/_authenticated/relatorios': typeof AuthenticatedRelatoriosRoute
   '/_authenticated/pacientes/$id': typeof AuthenticatedPacientesIdRoute
   '/_authenticated/pacientes/': typeof AuthenticatedPacientesIndexRoute
   '/api/public/hooks/appointment-reminders': typeof ApiPublicHooksAppointmentRemindersRoute
+  '/api/public/hooks/daily-checks': typeof ApiPublicHooksDailyChecksRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -204,16 +186,14 @@ export interface FileRouteTypes {
     | '/colaboradores'
     | '/configuracoes'
     | '/convenios'
-    | '/crm'
     | '/dashboard'
     | '/financeiro'
-    | '/negociacoes'
     | '/planilha'
-    | '/producao'
     | '/relatorios'
     | '/pacientes/$id'
     | '/pacientes/'
     | '/api/public/hooks/appointment-reminders'
+    | '/api/public/hooks/daily-checks'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -224,16 +204,14 @@ export interface FileRouteTypes {
     | '/colaboradores'
     | '/configuracoes'
     | '/convenios'
-    | '/crm'
     | '/dashboard'
     | '/financeiro'
-    | '/negociacoes'
     | '/planilha'
-    | '/producao'
     | '/relatorios'
     | '/pacientes/$id'
     | '/pacientes'
     | '/api/public/hooks/appointment-reminders'
+    | '/api/public/hooks/daily-checks'
   id:
     | '__root__'
     | '/'
@@ -245,16 +223,14 @@ export interface FileRouteTypes {
     | '/_authenticated/colaboradores'
     | '/_authenticated/configuracoes'
     | '/_authenticated/convenios'
-    | '/_authenticated/crm'
     | '/_authenticated/dashboard'
     | '/_authenticated/financeiro'
-    | '/_authenticated/negociacoes'
     | '/_authenticated/planilha'
-    | '/_authenticated/producao'
     | '/_authenticated/relatorios'
     | '/_authenticated/pacientes/$id'
     | '/_authenticated/pacientes/'
     | '/api/public/hooks/appointment-reminders'
+    | '/api/public/hooks/daily-checks'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -263,6 +239,7 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   ApiPublicHooksAppointmentRemindersRoute: typeof ApiPublicHooksAppointmentRemindersRoute
+  ApiPublicHooksDailyChecksRoute: typeof ApiPublicHooksDailyChecksRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -330,13 +307,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedConveniosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/crm': {
-      id: '/_authenticated/crm'
-      path: '/crm'
-      fullPath: '/crm'
-      preLoaderRoute: typeof AuthenticatedCrmRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
     '/_authenticated/dashboard': {
       id: '/_authenticated/dashboard'
       path: '/dashboard'
@@ -351,25 +321,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedFinanceiroRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/negociacoes': {
-      id: '/_authenticated/negociacoes'
-      path: '/negociacoes'
-      fullPath: '/negociacoes'
-      preLoaderRoute: typeof AuthenticatedNegociacoesRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
     '/_authenticated/planilha': {
       id: '/_authenticated/planilha'
       path: '/planilha'
       fullPath: '/planilha'
       preLoaderRoute: typeof AuthenticatedPlanilhaRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/producao': {
-      id: '/_authenticated/producao'
-      path: '/producao'
-      fullPath: '/producao'
-      preLoaderRoute: typeof AuthenticatedProducaoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/relatorios': {
@@ -400,6 +356,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksAppointmentRemindersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/daily-checks': {
+      id: '/api/public/hooks/daily-checks'
+      path: '/api/public/hooks/daily-checks'
+      fullPath: '/api/public/hooks/daily-checks'
+      preLoaderRoute: typeof ApiPublicHooksDailyChecksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -409,12 +372,9 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedColaboradoresRoute: typeof AuthenticatedColaboradoresRoute
   AuthenticatedConfiguracoesRoute: typeof AuthenticatedConfiguracoesRoute
   AuthenticatedConveniosRoute: typeof AuthenticatedConveniosRoute
-  AuthenticatedCrmRoute: typeof AuthenticatedCrmRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedFinanceiroRoute: typeof AuthenticatedFinanceiroRoute
-  AuthenticatedNegociacoesRoute: typeof AuthenticatedNegociacoesRoute
   AuthenticatedPlanilhaRoute: typeof AuthenticatedPlanilhaRoute
-  AuthenticatedProducaoRoute: typeof AuthenticatedProducaoRoute
   AuthenticatedRelatoriosRoute: typeof AuthenticatedRelatoriosRoute
   AuthenticatedPacientesIdRoute: typeof AuthenticatedPacientesIdRoute
   AuthenticatedPacientesIndexRoute: typeof AuthenticatedPacientesIndexRoute
@@ -426,12 +386,9 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedColaboradoresRoute: AuthenticatedColaboradoresRoute,
   AuthenticatedConfiguracoesRoute: AuthenticatedConfiguracoesRoute,
   AuthenticatedConveniosRoute: AuthenticatedConveniosRoute,
-  AuthenticatedCrmRoute: AuthenticatedCrmRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedFinanceiroRoute: AuthenticatedFinanceiroRoute,
-  AuthenticatedNegociacoesRoute: AuthenticatedNegociacoesRoute,
   AuthenticatedPlanilhaRoute: AuthenticatedPlanilhaRoute,
-  AuthenticatedProducaoRoute: AuthenticatedProducaoRoute,
   AuthenticatedRelatoriosRoute: AuthenticatedRelatoriosRoute,
   AuthenticatedPacientesIdRoute: AuthenticatedPacientesIdRoute,
   AuthenticatedPacientesIndexRoute: AuthenticatedPacientesIndexRoute,
@@ -447,17 +404,8 @@ const rootRouteChildren: RootRouteChildren = {
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   ApiPublicHooksAppointmentRemindersRoute:
     ApiPublicHooksAppointmentRemindersRoute,
+  ApiPublicHooksDailyChecksRoute: ApiPublicHooksDailyChecksRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

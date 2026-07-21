@@ -6,6 +6,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useApp } from "@/lib/app-context";
 import { useProfessionals } from "@/lib/hooks";
 import { addTimeline, moveCardToStageBySlug } from "@/lib/crm";
+import { useServerFn } from "@tanstack/react-start";
+import { runAppointmentAutomation } from "@/lib/automations.functions";
 import { PageHeader } from "@/components/page-header";
 import { AppointmentDialog } from "@/components/appointment-dialog";
 import { WaitlistCard } from "@/components/waitlist-card";
@@ -37,6 +39,7 @@ function AgendaPage() {
   const { clinic, userId } = useApp();
   const { data: professionals } = useProfessionals(clinic?.id);
   const queryClient = useQueryClient();
+  const runAutomation = useServerFn(runAppointmentAutomation);
   const [day, setDay] = useState(() => new Date().toISOString().slice(0, 10));
   const [prof, setProf] = useState("all");
   const [open, setOpen] = useState(false);
@@ -66,6 +69,27 @@ function AgendaPage() {
     const nd = new Date(day);
     nd.setDate(nd.getDate() + d);
     setDay(nd.toISOString().slice(0, 10));
+  }
+
+  async function cancel(a: { id: string; status: string; patient: { id: string } | null }) {
+    if (!clinic) return;
+    if (!confirm("Cancelar este agendamento?")) return;
+    await supabase
+      .from("appointments")
+      .update({ status: "cancelled" as never })
+      .eq("id", a.id);
+    await supabase.from("appointment_status_history").insert({
+      clinic_id: clinic.id,
+      appointment_id: a.id,
+      from_status: a.status as never,
+      to_status: "cancelled" as never,
+      changed_by: userId,
+    });
+    queryClient.invalidateQueries();
+    toast.success("Agendamento cancelado.");
+    runAutomation({ data: { appointmentId: a.id, newStatus: "cancelled" } }).catch((e) =>
+      console.error("[automation] waitlist notify failed:", (e as Error).message),
+    );
   }
 
   async function advance(a: { id: string; status: string; patient: { id: string } | null }) {
@@ -112,6 +136,11 @@ function AgendaPage() {
     }
     queryClient.invalidateQueries();
     toast.success("Status atualizado.");
+    if (next === "finished") {
+      runAutomation({ data: { appointmentId: a.id, newStatus: "finished" } })
+        .then(() => queryClient.invalidateQueries())
+        .catch((e) => console.error("[automation] revenue auto-log failed:", (e as Error).message));
+    }
   }
 
   return (
@@ -198,6 +227,16 @@ function AgendaPage() {
                     : a.status === "confirmed"
                       ? "Iniciar"
                       : "Finalizar"}
+                </Button>
+              )}
+              {!["finished", "cancelled", "no_show"].includes(a.status) && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => cancel(a)}
+                >
+                  Cancelar
                 </Button>
               )}
             </Card>

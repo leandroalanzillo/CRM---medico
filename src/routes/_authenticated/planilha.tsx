@@ -3,6 +3,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
+import { useServerFn } from "@tanstack/react-start";
+import { runAppointmentAutomation } from "@/lib/automations.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { useApp } from "@/lib/app-context";
 import { useProfessionals, useProcedures } from "@/lib/hooks";
@@ -63,6 +65,7 @@ function PlanilhaPage() {
   const { data: professionals } = useProfessionals(clinic?.id);
   const { data: procedures } = useProcedures(clinic?.id);
   const queryClient = useQueryClient();
+  const runAutomation = useServerFn(runAppointmentAutomation);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const today = new Date();
@@ -270,6 +273,20 @@ function PlanilhaPage() {
       setRows((r) =>
         r.map((x, i) => (i === idx ? { ...x, patient_id: patientId, _dirty: false } : x)),
       );
+      // Compare against the server-fetched status (not the local edit) to
+      // know whether this save is what actually flipped it to
+      // finished/cancelled — running the automation on every save
+      // regardless would create duplicate revenue entries.
+      const original = (data ?? []).find((d) => d.id === row.id);
+      if (
+        original &&
+        original.status !== row.status &&
+        (row.status === "finished" || row.status === "cancelled")
+      ) {
+        runAutomation({
+          data: { appointmentId: row.id, newStatus: row.status as "finished" | "cancelled" },
+        }).catch((e) => console.error("[automation] failed:", (e as Error).message));
+      }
     }
     toast.success("Salvo.");
     queryClient.invalidateQueries();
