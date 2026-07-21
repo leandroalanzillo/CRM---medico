@@ -37,6 +37,7 @@ import {
   X,
   Stethoscope,
   Clock,
+  DatabaseBackup,
 } from "lucide-react";
 import { NotificationSettings } from "@/components/notification-settings";
 import {
@@ -187,11 +188,65 @@ function ConfigPage() {
     queryClient.invalidateQueries({ queryKey: ["members", clinic?.id] });
   }
 
+  async function exportFullBackup() {
+    if (!clinic) return;
+    toast.info("Gerando backup completo — pode levar alguns segundos...");
+    const cid = clinic.id;
+    const [
+      patients,
+      appointments,
+      professionals,
+      procedures,
+      insuranceProviders,
+      financialTransactions,
+      negotiations,
+      medicalRecords,
+    ] = await Promise.all([
+      supabase.from("patients").select("*").eq("clinic_id", cid),
+      supabase.from("appointments").select("*").eq("clinic_id", cid),
+      supabase.from("professionals").select("*").eq("clinic_id", cid),
+      supabase.from("procedures").select("*").eq("clinic_id", cid),
+      supabase.from("insurance_providers").select("*").eq("clinic_id", cid),
+      supabase.from("financial_transactions").select("*").eq("clinic_id", cid),
+      supabase.from("negotiations").select("*").eq("clinic_id", cid),
+      supabase.from("medical_records").select("*").eq("clinic_id", cid),
+    ]);
+    const backup = {
+      clinica: clinic,
+      exportado_em: new Date().toISOString(),
+      pacientes: patients.data ?? [],
+      agendamentos: appointments.data ?? [],
+      profissionais: professionals.data ?? [],
+      procedimentos: procedures.data ?? [],
+      convenios: insuranceProviders.data ?? [],
+      financeiro: financialTransactions.data ?? [],
+      negociacoes: negotiations.data ?? [],
+      prontuarios: medicalRecords.data ?? [],
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `backup-${clinic.name?.replace(/\s+/g, "-").toLowerCase() ?? "clinica"}-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(
+      "Backup gerado. Guarde esse arquivo em local seguro — contém dados sensíveis de pacientes.",
+    );
+  }
+
   return (
     <div>
       <PageHeader
         title="Configurações"
         description="Clínica, equipe, procedimentos e permissões."
+        actions={
+          isAdmin ? (
+            <Button variant="outline" onClick={exportFullBackup}>
+              <DatabaseBackup className="size-4" /> Backup completo
+            </Button>
+          ) : undefined
+        }
       />
       <Tabs defaultValue="team">
         <TabsList className="mb-4 flex-wrap">

@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useApp } from "@/lib/app-context";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MessageCircle, ExternalLink, QrCode, Search } from "lucide-react";
@@ -27,12 +27,11 @@ function waLink(phone: string, message?: string) {
   return `https://wa.me/${num}${q}`;
 }
 
+const DEFAULT_TEMPLATE = "Olá! Aqui é da clínica. Tudo bem? Podemos confirmar seu atendimento?";
+
 function AtendimentosPage() {
   const { clinic } = useApp();
   const [search, setSearch] = useState("");
-  const [template, setTemplate] = useState(
-    "Olá! Aqui é da clínica. Tudo bem? Podemos confirmar seu atendimento?",
-  );
 
   const { data: patients } = useQuery({
     queryKey: ["patients-wa", clinic?.id],
@@ -87,20 +86,8 @@ function AtendimentosPage() {
 
       <WhatsAppConnectDialog open={waDialogOpen} onOpenChange={setWaDialogOpen} />
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <MessageCircle className="size-4" /> Mensagem padrão
-            </CardTitle>
-            <CardDescription>Enviada junto ao abrir o WhatsApp de um paciente.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Input value={template} onChange={(e) => setTemplate(e.target.value)} />
-          </CardContent>
-        </Card>
-
-        <Card className="lg:col-span-2">
+      <div className="grid gap-4">
+        <Card>
           <CardHeader className="gap-2">
             <CardTitle className="text-base">Pacientes com WhatsApp</CardTitle>
             <div className="relative">
@@ -125,7 +112,7 @@ function AtendimentosPage() {
                 {filtered.map((p) => (
                   <a
                     key={p.id}
-                    href={waLink(p.phone ?? "", template)}
+                    href={waLink(p.phone ?? "", DEFAULT_TEMPLATE)}
                     target="_blank"
                     rel="noreferrer"
                     className="flex items-center justify-between gap-3 py-3 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none"

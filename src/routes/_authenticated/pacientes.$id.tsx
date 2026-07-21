@@ -18,6 +18,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -30,7 +46,7 @@ import {
   APPOINTMENT_STATUS,
   NEGOTIATION_STATUS,
 } from "@/lib/format";
-import { addTimeline } from "@/lib/crm";
+import { addTimeline, addAudit } from "@/lib/crm";
 import { useProcedures } from "@/lib/hooks";
 import {
   ArrowLeft,
@@ -66,7 +82,7 @@ function Field({ label, value }: { label: string; value?: string | null }) {
 
 function PatientProfile() {
   const { id } = useParams({ from: "/_authenticated/pacientes/$id" });
-  const { clinic, canViewClinical } = useApp();
+  const { clinic, canViewClinical, hasRole, userId } = useApp();
   const queryClient = useQueryClient();
   const { data: procedures } = useProcedures(clinic?.id);
   const [edit, setEdit] = useState(false);
@@ -130,6 +146,110 @@ function PatientProfile() {
     .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
   const nextAppointment = upcoming[0] ?? null;
   const mostRecentPast = (appointments ?? []).find((a) => a.status !== "cancelled") ?? null;
+
+  const [eraseOpen, setEraseOpen] = useState(false);
+  const [eraseBusy, setEraseBusy] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+
+  async function exportLgpdData() {
+    if (!patient || !clinic) return;
+    setExportBusy(true);
+    const [meds, evolutions, files, negs, tx] = await Promise.all([
+      supabase.from("medical_records").select("*").eq("patient_id", id).maybeSingle(),
+      supabase
+        .from("clinical_evolutions")
+        .select("content, created_at, professional:professionals(name)")
+        .eq("patient_id", id),
+      supabase.from("clinical_files").select("name, file_type, created_at").eq("patient_id", id),
+      supabase.from("negotiations").select("*").eq("patient_id", id),
+      supabase
+        .from("financial_transactions")
+        .select("description, amount, type, status, due_date, paid_at")
+        .eq("patient_id", id),
+    ]);
+    const bundle = {
+      exportado_em: new Date().toISOString(),
+      paciente: patient,
+      agendamentos: appointments,
+      prontuario: meds.data ?? null,
+      evolucoes_clinicas: evolutions.data ?? [],
+      arquivos_anexados: files.data ?? [],
+      negociacoes: negs.data ?? [],
+      lancamentos_financeiros: tx.data ?? [],
+    };
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `dados-lgpd-${patient.full_name.replace(/\s+/g, "-").toLowerCase()}-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    await addAudit({
+      clinicId: clinic.id,
+      userId,
+      action: "lgpd_export",
+      resourceType: "patient",
+      resourceId: id,
+    });
+    toast.success("Dados exportados.");
+    setExportBusy(false);
+  }
+
+  async function eraseLgpdData() {
+    if (!patient || !clinic) return;
+    setEraseBusy(true);
+
+    // Blobs must be removed explicitly — deleting the clinical_files rows
+    // doesn't touch the underlying storage objects.
+    const { data: files } = await supabase
+      .from("clinical_files")
+      .select("storage_path")
+      .eq("patient_id", id);
+    if (files?.length) {
+      await supabase.storage.from("clinical-files").remove(files.map((f) => f.storage_path));
+    }
+    await supabase.from("clinical_files").delete().eq("patient_id", id);
+    await supabase.from("clinical_evolutions").delete().eq("patient_id", id);
+    await supabase.from("medical_records").delete().eq("patient_id", id);
+
+    // Anonymize rather than hard-delete the patient row: financial and
+    // appointment records tied to it must be retained for accounting/legal
+    // purposes (LGPD Art. 16 allows retention for compliance with a legal
+    // obligation), but personal identifiers are wiped — that's what
+    // "direito ao esquecimento" actually requires.
+    const { error } = await supabase
+      .from("patients")
+      .update({
+        full_name: "Paciente removido (LGPD)",
+        phone: null,
+        whatsapp: null,
+        email: null,
+        cpf: null,
+        address: null,
+        birth_date: null,
+        insurance: null,
+        insurance_card: null,
+        insurance_provider_id: null,
+        notes: "Dados pessoais apagados a pedido do titular (LGPD).",
+        active: false,
+      })
+      .eq("id", id);
+
+    setEraseBusy(false);
+    setEraseOpen(false);
+    if (error) return toast.error("Não foi possível concluir a exclusão.");
+    await addAudit({
+      clinicId: clinic.id,
+      userId,
+      action: "lgpd_erase",
+      resourceType: "patient",
+      resourceId: id,
+    });
+    toast.success(
+      "Dados pessoais apagados. Registros financeiros/agenda foram mantidos anonimizados, por obrigação legal.",
+    );
+    queryClient.invalidateQueries({ queryKey: ["patient", id] });
+  }
 
   const { data: negotiations } = useQuery({
     queryKey: ["patient-negs", id],
@@ -204,6 +324,26 @@ function PatientProfile() {
           <Button variant="outline" onClick={() => setEdit(true)}>
             <Pencil className="size-4" /> Editar
           </Button>
+          {hasRole("admin", "manager") && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon">
+                  <ShieldCheck className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem disabled={exportBusy} onClick={exportLgpdData}>
+                  <Download className="size-4" /> Exportar dados (LGPD)
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => setEraseOpen(true)}
+                >
+                  <Trash2 className="size-4" /> Apagar dados pessoais (LGPD)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </CardContent>
       </Card>
 
@@ -212,6 +352,27 @@ function PatientProfile() {
         onOpenChange={setScheduleOpen}
         initialPatientId={patient.id}
       />
+
+      <AlertDialog open={eraseOpen} onOpenChange={(v) => !v && !eraseBusy && setEraseOpen(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Apagar dados pessoais deste paciente?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Ação irreversível. Remove nome, telefone, e-mail, CPF, endereço, convênio, prontuário,
+              evoluções clínicas e arquivos anexados. Agendamentos e lançamentos financeiros já
+              registrados são mantidos (anonimizados), pois a lei exige guardar esses registros por
+              obrigação legal — só os dados pessoais são de fato apagados. Considere usar "Exportar
+              dados (LGPD)" antes, caso precise guardar uma cópia.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={eraseBusy}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction disabled={eraseBusy} onClick={eraseLgpdData}>
+              {eraseBusy ? "Apagando..." : "Apagar dados pessoais"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Tabs defaultValue="overview">
         <TabsList className="mb-4 flex-wrap">

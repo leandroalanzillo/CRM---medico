@@ -69,6 +69,7 @@ export function TransactionDialog({
   const [professionalId, setProfessionalId] = useState("");
   const [payment, setPayment] = useState("");
   const [notes, setNotes] = useState("");
+  const [installments, setInstallments] = useState(1);
 
   useEffect(() => {
     if (!open) return;
@@ -92,6 +93,7 @@ export function TransactionDialog({
       setProfessionalId("");
       setPayment("");
       setNotes("");
+      setInstallments(1);
     }
   }, [open, transaction, defaultType]);
 
@@ -131,6 +133,42 @@ export function TransactionDialog({
         setLoading(false);
         return toast.error(error.message);
       }
+    } else if (installments > 1) {
+      // Each parcela is its own row (so the rest of Financeiro — DRE, ledger
+      // export, contas a receber/pagar — needs no special-casing), linked
+      // by installment_group_id. due_date advances one month per parcela;
+      // amount is split evenly, with any rounding remainder absorbed by the
+      // last installment so the parcelas always sum exactly to the total.
+      const groupId = crypto.randomUUID();
+      const base = Math.floor((amount / installments) * 100) / 100;
+      const rows = Array.from({ length: installments }).map((_, i) => {
+        const due = new Date(dueDate + "T00:00:00");
+        due.setMonth(due.getMonth() + i);
+        const isLast = i === installments - 1;
+        const parcelaAmount = isLast
+          ? Number((amount - base * (installments - 1)).toFixed(2))
+          : base;
+        return {
+          ...payload,
+          description: `${description.trim()} (${i + 1}/${installments})`,
+          amount: parcelaAmount,
+          due_date: due.toISOString().slice(0, 10),
+          status: "pending" as const,
+          created_by: userId,
+          installment_group_id: groupId,
+          installment_number: i + 1,
+          installment_total: installments,
+        };
+      });
+      const { data, error } = await supabase
+        .from("financial_transactions")
+        .insert(rows)
+        .select("id");
+      if (error || !data) {
+        setLoading(false);
+        return toast.error(error?.message ?? "Erro ao criar parcelas.");
+      }
+      txId = data[0]?.id;
     } else {
       const { data, error } = await supabase
         .from("financial_transactions")
@@ -154,7 +192,13 @@ export function TransactionDialog({
 
     setLoading(false);
     queryClient.invalidateQueries({ queryKey: ["financial-transactions"] });
-    toast.success(isEdit ? "Lançamento atualizado." : "Lançamento criado.");
+    toast.success(
+      isEdit
+        ? "Lançamento atualizado."
+        : installments > 1
+          ? `${installments} parcelas criadas.`
+          : "Lançamento criado.",
+    );
     onOpenChange(false);
   }
 
@@ -243,6 +287,29 @@ export function TransactionDialog({
               </Select>
             </div>
           </div>
+
+          {!isEdit && (
+            <div className="space-y-2">
+              <Label>Parcelar em</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  min={1}
+                  max={24}
+                  className="w-24"
+                  value={installments}
+                  onChange={(e) =>
+                    setInstallments(Math.min(24, Math.max(1, Number(e.target.value) || 1)))
+                  }
+                />
+                <span className="text-sm text-muted-foreground">
+                  {installments > 1
+                    ? `${installments}x de ${amount ? (amount / installments).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"} (vencimentos mensais a partir da data acima)`
+                    : "vez (à vista)"}
+                </span>
+              </div>
+            </div>
+          )}
 
           {type === "income" && (
             <div className="grid gap-3 sm:grid-cols-2">

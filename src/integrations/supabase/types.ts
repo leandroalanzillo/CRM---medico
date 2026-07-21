@@ -1427,6 +1427,77 @@ export type Database = {
           },
         ];
       };
+      waitlist: {
+        Row: {
+          clinic_id: string;
+          created_at: string;
+          created_by: string | null;
+          id: string;
+          notes: string | null;
+          patient_id: string;
+          preferred_period: string | null;
+          procedure_id: string | null;
+          professional_id: string | null;
+          status: Database["public"]["Enums"]["waitlist_status"];
+          updated_at: string;
+        };
+        Insert: {
+          clinic_id: string;
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          notes?: string | null;
+          patient_id: string;
+          preferred_period?: string | null;
+          procedure_id?: string | null;
+          professional_id?: string | null;
+          status?: Database["public"]["Enums"]["waitlist_status"];
+          updated_at?: string;
+        };
+        Update: {
+          clinic_id?: string;
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          notes?: string | null;
+          patient_id?: string;
+          preferred_period?: string | null;
+          procedure_id?: string | null;
+          professional_id?: string | null;
+          status?: Database["public"]["Enums"]["waitlist_status"];
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "waitlist_clinic_id_fkey";
+            columns: ["clinic_id"];
+            isOneToOne: false;
+            referencedRelation: "clinics";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "waitlist_patient_id_fkey";
+            columns: ["patient_id"];
+            isOneToOne: false;
+            referencedRelation: "patients";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "waitlist_professional_id_fkey";
+            columns: ["professional_id"];
+            isOneToOne: false;
+            referencedRelation: "professionals";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "waitlist_procedure_id_fkey";
+            columns: ["procedure_id"];
+            isOneToOne: false;
+            referencedRelation: "procedures";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       whatsapp_connections: {
         Row: {
           clinic_id: string;
@@ -1522,6 +1593,9 @@ export type Database = {
           description: string;
           due_date: string;
           id: string;
+          installment_group_id: string | null;
+          installment_number: number | null;
+          installment_total: number | null;
           negotiation_id: string | null;
           notes: string | null;
           paid_at: string | null;
@@ -1541,6 +1615,9 @@ export type Database = {
           description: string;
           due_date: string;
           id?: string;
+          installment_group_id?: string | null;
+          installment_number?: number | null;
+          installment_total?: number | null;
           negotiation_id?: string | null;
           notes?: string | null;
           paid_at?: string | null;
@@ -1560,6 +1637,9 @@ export type Database = {
           description?: string;
           due_date?: string;
           id?: string;
+          installment_group_id?: string | null;
+          installment_number?: number | null;
+          installment_total?: number | null;
           negotiation_id?: string | null;
           notes?: string | null;
           paid_at?: string | null;
@@ -1645,6 +1725,7 @@ export type Database = {
       financial_type: "income" | "expense";
       negotiation_status: "negotiating" | "awaiting" | "accepted" | "rejected" | "expired";
       patient_kind: "lead" | "patient";
+      waitlist_status: "waiting" | "contacted" | "scheduled" | "cancelled";
       whatsapp_status: "disconnected" | "awaiting_qr" | "connecting" | "connected" | "error";
     };
     CompositeTypes: {
@@ -1780,6 +1861,7 @@ export const Constants = {
       clinic_type: ["medical", "dental"],
       negotiation_status: ["negotiating", "awaiting", "accepted", "rejected", "expired"],
       patient_kind: ["lead", "patient"],
+      waitlist_status: ["waiting", "contacted", "scheduled", "cancelled"],
       whatsapp_status: ["disconnected", "awaiting_qr", "connecting", "connected", "error"],
     },
   },

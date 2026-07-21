@@ -31,6 +31,8 @@ import {
   Wallet,
   ShieldPlus,
   UserCog,
+  AlertTriangle,
+  X,
 } from "lucide-react";
 
 const NAV = [
@@ -89,6 +91,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+
+  const isDefaultTestAccount =
+    email === "admin@clinica.local" || email === "recepcionista@clinica.local";
 
   async function signOut() {
     await queryClient.cancelQueries();
@@ -155,7 +161,30 @@ export function AppShell({ children }: { children: ReactNode }) {
           </DropdownMenu>
         </header>
 
-        <main className="flex-1 p-4 lg:p-8">{children}</main>
+        <main className="flex-1 p-4 lg:p-8">
+          {isDefaultTestAccount && !bannerDismissed && (
+            <div className="mb-4 flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
+              <div className="flex-1">
+                <p className="font-medium text-foreground">
+                  Você está usando uma conta de teste com senha padrão conhecida.
+                </p>
+                <p className="text-muted-foreground">
+                  Antes de usar com dados reais de pacientes, troque a senha (Supabase Auth) ou crie
+                  contas próprias em Configurações → Permissões.
+                </p>
+              </div>
+              <button
+                onClick={() => setBannerDismissed(true)}
+                className="shrink-0 rounded p-1 text-muted-foreground hover:bg-warning/20"
+                aria-label="Dispensar aviso"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+          )}
+          {children}
+        </main>
       </div>
     </div>
   );
