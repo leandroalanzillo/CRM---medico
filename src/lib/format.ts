@@ -44,6 +44,19 @@ export const APPOINTMENT_STATUS: Record<string, { label: string; className: stri
   no_show: { label: "Não compareceu", className: "bg-destructive/10 text-destructive" },
 };
 
+// Subtle full-row background tint per status, for tables like Planilha where
+// the whole line should be quickly scannable by status — much lighter than
+// the badge classNames above, which are too saturated to cover a whole row.
+export const APPOINTMENT_ROW_TINT: Record<string, string> = {
+  scheduled: "",
+  confirmed: "bg-info/5",
+  waiting: "bg-warning/10",
+  in_progress: "bg-primary/5",
+  finished: "bg-success/5",
+  cancelled: "bg-destructive/5",
+  no_show: "bg-destructive/5",
+};
+
 export const NEGOTIATION_STATUS: Record<string, { label: string; className: string }> = {
   negotiating: { label: "Em negociação", className: "bg-info/15 text-info" },
   awaiting: { label: "Aguardando resposta", className: "bg-warning/20 text-warning-foreground" },

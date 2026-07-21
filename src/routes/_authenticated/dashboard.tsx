@@ -3,8 +3,6 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ResponsiveContainer,
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   Tooltip,
@@ -173,18 +171,14 @@ function DashboardPage() {
     ).length;
     const withoutInsurance = activePatients.length - withInsurance;
 
-    // Production per professional
-    const byProf = (professionals ?? [])
-      .map((p, i) => ({
-        name: p.name.split(" ")[0],
-        value: finished
-          .filter((a) => a.professional_id === p.id)
-          .reduce((s, a) => s + Number(a.produced_value ?? 0), 0),
-        count: finished.filter((a) => a.professional_id === p.id).length,
-        fill: CHART[i % CHART.length],
-      }))
-      .filter((r) => r.count > 0)
-      .sort((a, b) => b.value - a.value);
+    // Pacientes: convênio vs particular (pairs with the "Pacientes com
+    // convênio" KPI card above) — replaces "Produção por profissional",
+    // which moved to the Colaboradores page where per-professional detail
+    // actually belongs.
+    const byInsurance = [
+      { name: "Com convênio", value: withInsurance, fill: CHART[0] },
+      { name: "Particular", value: withoutInsurance, fill: CHART[1] },
+    ].filter((r) => r.value > 0);
 
     // Appointments by status (pie)
     const statuses = ["scheduled", "confirmed", "in_progress", "finished", "cancelled", "no_show"];
@@ -221,11 +215,11 @@ function DashboardPage() {
       withInsurance,
       withoutInsurance,
       production,
-      byProf,
+      byInsurance,
       byStatus,
       days,
     };
-  }, [data, start, end, prof, professionals]);
+  }, [data, start, end, prof]);
 
   return (
     <div>
@@ -338,41 +332,43 @@ function DashboardPage() {
           <div className="mt-6 grid gap-4 lg:grid-cols-3">
             <Card className="lg:col-span-2">
               <CardHeader>
-                <CardTitle className="text-base">Produção por profissional</CardTitle>
+                <CardTitle className="text-base">Pacientes: convênio vs particular</CardTitle>
               </CardHeader>
               <CardContent className="h-72">
-                {m.byProf.length === 0 ? (
+                {m.byInsurance.length === 0 ? (
                   <EmptyChart />
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={m.byProf} margin={{ left: 8, right: 8 }}>
-                      <CartesianGrid
-                        strokeDasharray="3 3"
-                        stroke="var(--border)"
-                        vertical={false}
-                      />
-                      <XAxis
-                        dataKey="name"
-                        tick={{ fontSize: 12 }}
-                        stroke="var(--muted-foreground)"
-                      />
-                      <YAxis
-                        tick={{ fontSize: 12 }}
-                        stroke="var(--muted-foreground)"
-                        tickFormatter={(v) => `R$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
-                      />
-                      <Tooltip
-                        formatter={(v: number) => brl(v)}
-                        contentStyle={{ borderRadius: 12, border: "1px solid var(--border)" }}
-                      />
-                      <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                        {m.byProf.map((r, i) => (
+                    <PieChart>
+                      <Pie
+                        data={m.byInsurance}
+                        dataKey="value"
+                        nameKey="name"
+                        innerRadius={60}
+                        outerRadius={100}
+                        paddingAngle={2}
+                      >
+                        {m.byInsurance.map((r, i) => (
                           <Cell key={i} fill={r.fill} />
                         ))}
-                      </Bar>
-                    </BarChart>
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{ borderRadius: 12, border: "1px solid var(--border)" }}
+                      />
+                    </PieChart>
                   </ResponsiveContainer>
                 )}
+                <div className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1">
+                  {m.byInsurance.map((r) => (
+                    <span
+                      key={r.name}
+                      className="flex items-center gap-1 text-xs text-muted-foreground"
+                    >
+                      <span className="size-2 rounded-full" style={{ background: r.fill }} />
+                      {r.name} ({r.value})
+                    </span>
+                  ))}
+                </div>
               </CardContent>
             </Card>
 

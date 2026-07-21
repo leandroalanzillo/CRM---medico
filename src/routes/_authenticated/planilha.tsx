@@ -26,7 +26,8 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { APPOINTMENT_STATUS } from "@/lib/format";
+import { APPOINTMENT_STATUS, APPOINTMENT_ROW_TINT } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { Download, Upload, Plus, Trash2, Save, Info, Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/planilha")({ component: PlanilhaPage });
@@ -526,6 +527,22 @@ function PlanilhaPage() {
         </Button>
       </div>
 
+      <div className="mb-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+        <span>Cor da linha:</span>
+        {STATUSES.map((s) => (
+          <span key={s} className="flex items-center gap-1">
+            <span
+              className={cn(
+                "size-2.5 rounded-full",
+                APPOINTMENT_ROW_TINT[s] || "bg-muted",
+                "ring-1 ring-inset ring-border",
+              )}
+            />
+            {APPOINTMENT_STATUS[s].label}
+          </span>
+        ))}
+      </div>
+
       {isLoading ? (
         <Skeleton className="h-96" />
       ) : (
@@ -554,7 +571,13 @@ function PlanilhaPage() {
                 </tr>
               )}
               {rows.map((r, idx) => (
-                <tr key={r.id} className={r._dirty ? "bg-warning/5" : "hover:bg-muted/30"}>
+                <tr
+                  key={r.id}
+                  className={cn(
+                    "transition-colors hover:brightness-95",
+                    r._dirty ? "bg-warning/10" : APPOINTMENT_ROW_TINT[r.status],
+                  )}
+                >
                   <Td>
                     <PatientNameCell
                       row={r}

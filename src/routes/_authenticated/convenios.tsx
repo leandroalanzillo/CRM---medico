@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useApp } from "@/lib/app-context";
@@ -29,7 +29,19 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ShieldPlus, Plus, MoreVertical, Pencil, Trash2, Phone, Mail, Loader2 } from "lucide-react";
+import { StatCard } from "@/components/stat-card";
+import {
+  ShieldPlus,
+  Plus,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  Phone,
+  Mail,
+  Loader2,
+  Users,
+  UserRound,
+} from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 
 type InsuranceProvider = Database["public"]["Tables"]["insurance_providers"]["Row"];
@@ -44,6 +56,38 @@ function ConveniosPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<InsuranceProvider | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InsuranceProvider | null>(null);
+
+  // Live patient counts per convênio. This is what "atualiza automaticamente"
+  // really means here: it's just a query keyed on the patients table, so the
+  // moment a patient's convênio is set/changed elsewhere in the app, this
+  // view reflects it on the next fetch/focus — no separate sync needed.
+  const { data: patientCounts } = useQuery({
+    queryKey: ["patients-by-insurance", clinic?.id],
+    enabled: !!clinic?.id,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("patients")
+        .select("id, insurance_provider_id, insurance, active")
+        .eq("clinic_id", clinic!.id);
+      const rows = data ?? [];
+      const byProvider = new Map<string, number>();
+      let particular = 0;
+      let activeTotal = 0;
+      for (const p of rows) {
+        if (p.active === false) continue;
+        activeTotal++;
+        if (p.insurance_provider_id) {
+          byProvider.set(
+            p.insurance_provider_id,
+            (byProvider.get(p.insurance_provider_id) ?? 0) + 1,
+          );
+        } else if (!p.insurance?.trim()) {
+          particular++;
+        }
+      }
+      return { byProvider, particular, activeTotal };
+    },
+  });
 
   async function remove() {
     if (!deleteTarget) return;
@@ -75,6 +119,29 @@ function ConveniosPage() {
           ) : undefined
         }
       />
+
+      {patientCounts && (
+        <div className="mb-6 grid gap-4 sm:grid-cols-3">
+          <StatCard
+            label="Pacientes ativos"
+            value={patientCounts.activeTotal}
+            icon={Users}
+            accent="primary"
+          />
+          <StatCard
+            label="Com convênio"
+            value={patientCounts.activeTotal - patientCounts.particular}
+            icon={ShieldPlus}
+            accent="info"
+          />
+          <StatCard
+            label="Particular"
+            value={patientCounts.particular}
+            icon={UserRound}
+            accent="warning"
+          />
+        </div>
+      )}
 
       {isLoading ? (
         <div className="grid gap-3">
@@ -114,6 +181,10 @@ function ConveniosPage() {
                       </Badge>
                     )}
                   </div>
+                  <p className="mt-0.5 flex items-center gap-1 text-xs font-medium text-primary">
+                    <Users className="size-3" />
+                    {patientCounts?.byProvider.get(c.id) ?? 0} paciente(s) vinculado(s)
+                  </p>
                   {c.ans_registry && (
                     <p className="text-xs text-muted-foreground">Registro ANS: {c.ans_registry}</p>
                   )}

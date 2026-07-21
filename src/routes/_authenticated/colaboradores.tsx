@@ -1,6 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  Cell,
+} from "recharts";
 import { supabase } from "@/integrations/supabase/client";
 import { useApp } from "@/lib/app-context";
 import { PageHeader } from "@/components/page-header";
@@ -19,6 +29,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { brl, initials, ROLE_LABELS } from "@/lib/format";
 import { UserCog, Lock, Stethoscope, Headset } from "lucide-react";
+
+const CHART = [
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+];
 
 export const Route = createFileRoute("/_authenticated/colaboradores")({
   component: ColaboradoresPage,
@@ -82,6 +100,18 @@ function ColaboradoresPage() {
     [data],
   );
 
+  const chartData = useMemo(
+    () =>
+      (data?.doctors ?? [])
+        .filter((d) => d.revenue > 0)
+        .map((d, i) => ({
+          name: d.name.split(" ")[0],
+          value: d.revenue,
+          fill: CHART[i % CHART.length],
+        })),
+    [data],
+  );
+
   if (!isAdmin) {
     return (
       <div>
@@ -108,6 +138,46 @@ function ColaboradoresPage() {
         </div>
       ) : (
         <div className="grid gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Stethoscope className="size-4" /> Produção por profissional
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="h-72">
+              {chartData.length === 0 ? (
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                  Sem produção registrada ainda.
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ left: 8, right: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fontSize: 12 }}
+                      stroke="var(--muted-foreground)"
+                    />
+                    <YAxis
+                      tick={{ fontSize: 12 }}
+                      stroke="var(--muted-foreground)"
+                      tickFormatter={(v) => `R$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
+                    />
+                    <Tooltip
+                      formatter={(v: number) => brl(v)}
+                      contentStyle={{ borderRadius: 12, border: "1px solid var(--border)" }}
+                    />
+                    <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                      {chartData.map((r, i) => (
+                        <Cell key={i} fill={r.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">

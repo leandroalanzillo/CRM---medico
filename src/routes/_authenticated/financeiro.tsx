@@ -36,6 +36,13 @@ import { brl, fmtDate, FINANCIAL_STATUS, FINANCIAL_TYPE_LABELS, isOverdue } from
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Wallet,
   TrendingUp,
   TrendingDown,
@@ -75,6 +82,36 @@ const STATUS_FILTERS = [
   { value: "cancelled", label: "Cancelados" },
 ];
 
+const PERIODS = [
+  { value: "month", label: "Este mês" },
+  { value: "last_month", label: "Mês passado" },
+  { value: "quarter", label: "Últimos 90 dias" },
+  { value: "year", label: "Este ano" },
+  { value: "custom", label: "Personalizado" },
+];
+
+function rangeFor(period: string, cf: string, ct: string) {
+  const now = new Date();
+  const end = new Date(now);
+  end.setHours(23, 59, 59, 999);
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  if (period === "month") start.setDate(1);
+  else if (period === "last_month") {
+    start.setMonth(start.getMonth() - 1, 1);
+    end.setDate(0);
+    end.setHours(23, 59, 59, 999);
+  } else if (period === "quarter") start.setDate(start.getDate() - 89);
+  else if (period === "year") start.setMonth(0, 1);
+  else if (period === "custom") {
+    return {
+      start: cf ? new Date(cf + "T00:00:00") : start,
+      end: ct ? new Date(ct + "T23:59:59") : end,
+    };
+  }
+  return { start, end };
+}
+
 function FinanceiroPage() {
   const { clinic, userId } = useApp();
   const queryClient = useQueryClient();
@@ -82,6 +119,13 @@ function FinanceiroPage() {
   const [newType, setNewType] = useState<"income" | "expense">("income");
   const [editing, setEditing] = useState<TransactionEditable | null>(null);
   const [tab, setTab] = useState("overview");
+  const [period, setPeriod] = useState("month");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const { start: periodStart, end: periodEnd } = useMemo(
+    () => rangeFor(period, customFrom, customTo),
+    [period, customFrom, customTo],
+  );
 
   const { data, isLoading } = useQuery({
     queryKey: ["financial-transactions", clinic?.id],
@@ -102,17 +146,20 @@ function FinanceiroPage() {
   const rows = useMemo(() => data ?? [], [data]);
 
   const kpis = useMemo(() => {
-    const now = new Date();
-    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const inThisMonth = (d: string | null) => !!d && d.slice(0, 7) === monthKey;
+    const inRange = (d: string | null) => {
+      if (!d) return false;
+      const t = new Date(d);
+      return t >= periodStart && t <= periodEnd;
+    };
 
     const incomeMonth = rows
-      .filter((r) => r.type === "income" && r.status === "paid" && inThisMonth(r.paid_at))
+      .filter((r) => r.type === "income" && r.status === "paid" && inRange(r.paid_at))
       .reduce((s, r) => s + Number(r.amount), 0);
     const expenseMonth = rows
-      .filter((r) => r.type === "expense" && r.status === "paid" && inThisMonth(r.paid_at))
+      .filter((r) => r.type === "expense" && r.status === "paid" && inRange(r.paid_at))
       .reduce((s, r) => s + Number(r.amount), 0);
 
+    const now = new Date();
     const in7Days = new Date(now);
     in7Days.setDate(in7Days.getDate() + 7);
     const upcoming = rows.filter(
@@ -133,7 +180,7 @@ function FinanceiroPage() {
       upcomingCount: upcoming.length,
       upcomingValue,
     };
-  }, [rows]);
+  }, [rows, periodStart, periodEnd]);
 
   const chartData = useMemo(() => {
     const now = new Date();
@@ -275,21 +322,56 @@ function FinanceiroPage() {
         }
       />
 
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <Select value={period} onValueChange={setPeriod}>
+          <SelectTrigger className="w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PERIODS.map((p) => (
+              <SelectItem key={p.value} value={p.value}>
+                {p.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {period === "custom" && (
+          <>
+            <Input
+              type="date"
+              className="w-auto"
+              value={customFrom}
+              onChange={(e) => setCustomFrom(e.target.value)}
+            />
+            <span className="text-muted-foreground">até</span>
+            <Input
+              type="date"
+              className="w-auto"
+              value={customTo}
+              onChange={(e) => setCustomTo(e.target.value)}
+            />
+          </>
+        )}
+        <span className="text-xs text-muted-foreground">
+          {periodStart.toLocaleDateString("pt-BR")} — {periodEnd.toLocaleDateString("pt-BR")}
+        </span>
+      </div>
+
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          label="Receita do mês"
+          label="Receita do período"
           value={brl(kpis.incomeMonth)}
           icon={TrendingUp}
           accent="success"
         />
         <StatCard
-          label="Despesa do mês"
+          label="Despesa do período"
           value={brl(kpis.expenseMonth)}
           icon={TrendingDown}
           accent="destructive"
         />
         <StatCard
-          label="Saldo do mês"
+          label="Saldo do período"
           value={brl(kpis.balanceMonth)}
           icon={Wallet}
           accent={kpis.balanceMonth >= 0 ? "primary" : "destructive"}
@@ -307,6 +389,7 @@ function FinanceiroPage() {
         <TabsList className="mb-4 flex-wrap">
           <TabsTrigger value="overview">Visão geral</TabsTrigger>
           <TabsTrigger value="dre">DRE</TabsTrigger>
+          <TabsTrigger value="fiscal">Fiscal & Contábil</TabsTrigger>
           <TabsTrigger value="receivable">Contas a receber</TabsTrigger>
           <TabsTrigger value="payable">Contas a pagar</TabsTrigger>
         </TabsList>
@@ -380,6 +463,10 @@ function FinanceiroPage() {
           <DreView rows={rows} />
         </TabsContent>
 
+        <TabsContent value="fiscal">
+          <FiscalTab periodStart={periodStart} periodEnd={periodEnd} />
+        </TabsContent>
+
         <TabsContent value="receivable">
           <TransactionsTable
             rows={rows.filter((r) => r.type === "income")}
@@ -419,6 +506,182 @@ function FinanceiroPage() {
         transaction={editing}
         defaultType={newType}
       />
+    </div>
+  );
+}
+
+type ApptForInvoice = {
+  starts_at: string;
+  produced_value: number | null;
+  notes: string | null;
+  patient: {
+    full_name: string;
+    cpf: string | null;
+    birth_date: string | null;
+    address: string | null;
+    email: string | null;
+    phone: string | null;
+  } | null;
+  professional: { name: string; registration: string | null } | null;
+  procedure: { name: string } | null;
+};
+
+function FiscalTab({ periodStart, periodEnd }: { periodStart: Date; periodEnd: Date }) {
+  const { clinic } = useApp();
+  const { data, isLoading } = useQuery({
+    queryKey: ["financeiro-fiscal", clinic?.id, periodStart.toISOString(), periodEnd.toISOString()],
+    enabled: !!clinic?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("appointments")
+        .select(
+          "starts_at, produced_value, notes, patient:patients(full_name, cpf, birth_date, address, email, phone), professional:professionals(name, registration), procedure:procedures(name)",
+        )
+        .eq("clinic_id", clinic!.id)
+        .eq("status", "finished")
+        .gte("starts_at", periodStart.toISOString())
+        .lte("starts_at", periodEnd.toISOString())
+        .order("starts_at");
+      if (error) throw error;
+      return (data ?? []) as unknown as ApptForInvoice[];
+    },
+  });
+
+  const rows = data ?? [];
+  const totalProduction = rows.reduce((s, a) => s + Number(a.produced_value ?? 0), 0);
+
+  function exportInvoiceCSV() {
+    const esc = (v: unknown) => {
+      const s = v === null || v === undefined ? "" : String(v);
+      return /["\n;,]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const headers = [
+      "Data",
+      "Paciente",
+      "CPF",
+      "Nascimento",
+      "Endereço",
+      "Email",
+      "Telefone",
+      "Profissional",
+      "Registro",
+      "Procedimento",
+      "Valor (R$)",
+      "Observações",
+    ];
+    const body = rows.map((a) =>
+      [
+        fmtDate(a.starts_at),
+        a.patient?.full_name ?? "—",
+        a.patient?.cpf ?? "",
+        a.patient?.birth_date ? fmtDate(a.patient.birth_date) : "",
+        a.patient?.address ?? "",
+        a.patient?.email ?? "",
+        a.patient?.phone ?? "",
+        a.professional?.name ?? "",
+        a.professional?.registration ?? "",
+        a.procedure?.name ?? "Consulta",
+        Number(a.produced_value ?? 0)
+          .toFixed(2)
+          .replace(".", ","),
+        (a.notes ?? "").replace(/\n/g, " "),
+      ]
+        .map(esc)
+        .join(";"),
+    );
+    const csv = "\uFEFF" + [headers.join(";"), ...body].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `notas_fiscais_${periodStart.toISOString().slice(0, 10)}_a_${periodEnd.toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  if (isLoading) return <Skeleton className="h-96" />;
+
+  return (
+    <div className="grid gap-4">
+      <Card>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Receipt className="size-4" /> Base para emissão de notas fiscais
+            </CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Atendimentos finalizados com dados completos do paciente, no período selecionado
+              acima.
+            </p>
+          </div>
+          <Button size="sm" variant="outline" disabled={!rows.length} onClick={exportInvoiceCSV}>
+            <FileSpreadsheet className="size-4" /> CSV (Excel)
+          </Button>
+        </CardHeader>
+        <CardContent className="p-0">
+          {rows.length === 0 ? (
+            <div className="py-12 text-center text-sm text-muted-foreground">
+              Nenhum atendimento finalizado no período.
+            </div>
+          ) : (
+            <div className="max-h-[480px] overflow-auto">
+              <Table>
+                <TableHeader className="sticky top-0 bg-background">
+                  <TableRow>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Paciente</TableHead>
+                    <TableHead>CPF</TableHead>
+                    <TableHead>Procedimento</TableHead>
+                    <TableHead>Profissional</TableHead>
+                    <TableHead className="text-right">Valor</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((a, i) => (
+                    <TableRow key={i}>
+                      <TableCell>{fmtDate(a.starts_at)}</TableCell>
+                      <TableCell className="font-medium">{a.patient?.full_name ?? "—"}</TableCell>
+                      <TableCell className={a.patient?.cpf ? "" : "text-destructive"}>
+                        {a.patient?.cpf || "sem CPF"}
+                      </TableCell>
+                      <TableCell>{a.procedure?.name ?? "Consulta"}</TableCell>
+                      <TableCell>{a.professional?.name}</TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {brl(Number(a.produced_value ?? 0))}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="flex items-center justify-between p-4">
+          <p className="font-semibold">Total de produção no período (livro caixa)</p>
+          <p className="text-xl font-bold text-primary">{brl(totalProduction)}</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-5 text-sm text-muted-foreground">
+          <p className="mb-2 font-medium text-foreground">O que está incluído no arquivo CSV:</p>
+          <ul className="grid list-disc gap-1 pl-4 sm:grid-cols-2">
+            <li>Data do atendimento</li>
+            <li>Nome, CPF e data de nascimento do paciente</li>
+            <li>Endereço, e-mail e telefone</li>
+            <li>Procedimento realizado</li>
+            <li>Profissional responsável e registro (CRM/CRO)</li>
+            <li>Valor cobrado e observações do atendimento</li>
+          </ul>
+          <p className="mt-3 text-xs">
+            Formato compatível com importação em sistemas contábeis e emissores de NFS-e (separador
+            ponto-e-vírgula, codificação UTF-8 com BOM).
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }

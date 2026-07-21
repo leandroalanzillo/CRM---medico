@@ -7,7 +7,7 @@ import { EmptyState } from "@/components/empty-state";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MessageCircle, ExternalLink, Info, QrCode, Search } from "lucide-react";
+import { MessageCircle, ExternalLink, QrCode, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { WA_STATUS } from "@/lib/format";
@@ -91,24 +91,12 @@ function AtendimentosPage() {
         <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Info className="size-4" /> Como funciona
+              <MessageCircle className="size-4" /> Mensagem padrão
             </CardTitle>
-            <CardDescription>Modo gratuito, sem QR Code.</CardDescription>
+            <CardDescription>Enviada junto ao abrir o WhatsApp de um paciente.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm text-muted-foreground">
-            <p>
-              Ao clicar em <strong>Abrir WhatsApp</strong>, o WhatsApp Web (ou app do celular) abre
-              já com o número do paciente e uma mensagem sugerida.
-            </p>
-            <p>
-              As respostas acontecem no próprio WhatsApp — não voltam para dentro do CRM. Para
-              receber mensagens aqui, seria necessário contratar um provedor pago (Cloud API oficial
-              ou Evolution/Z-API).
-            </p>
-            <div className="space-y-2 pt-2">
-              <label className="text-xs font-medium text-foreground">Mensagem padrão</label>
-              <Input value={template} onChange={(e) => setTemplate(e.target.value)} />
-            </div>
+          <CardContent>
+            <Input value={template} onChange={(e) => setTemplate(e.target.value)} />
           </CardContent>
         </Card>
 
