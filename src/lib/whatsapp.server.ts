@@ -111,12 +111,47 @@ export async function getWhatsAppPairingStatus(instanceName: string): Promise<Ev
     const res = await fetch(`${baseUrl}/instance/connectionState/${instanceName}`, {
       headers: { apikey: apiKey! },
     });
-    if (!res.ok) return { ok: false, error: `Evolution API [${res.status}]` };
-    const data = (await res.json()) as { instance?: { state?: string; owner?: string } };
-    const state = data.instance?.state; // "open" | "connecting" | "close"
-    const status =
-      state === "open" ? "connected" : state === "connecting" ? "connecting" : "disconnected";
-    return { ok: true, status, phoneNumber: data.instance?.owner };
+    if (res.ok) {
+      const data = (await res.json()) as { instance?: { state?: string; owner?: string } };
+      const state = data.instance?.state; // "open" | "connecting" | "close"
+      const status =
+        state === "open" ? "connected" : state === "connecting" ? "connecting" : "disconnected";
+      return { ok: true, status, phoneNumber: data.instance?.owner };
+    }
+
+    // /instance/connectionState/{name} 404s on some Evolution API v2.3.x
+    // builds even when the instance is genuinely connected (a known
+    // routing bug in that version range). /instance/fetchInstances
+    // doesn't hit the same broken route and returns the same connection
+    // state as part of a fuller instance listing — use it as a fallback
+    // instead of reporting "disconnected" when we actually don't know.
+    if (res.status === 404) {
+      const listRes = await fetch(
+        `${baseUrl}/instance/fetchInstances?instanceName=${instanceName}`,
+        {
+          headers: { apikey: apiKey! },
+        },
+      );
+      if (listRes.ok) {
+        const list = (await listRes.json()) as Array<{
+          name?: string;
+          instanceName?: string;
+          connectionStatus?: string;
+          ownerJid?: string;
+        }>;
+        const match = Array.isArray(list)
+          ? list.find((i) => i.name === instanceName || i.instanceName === instanceName)
+          : null;
+        if (match) {
+          const raw = (match.connectionStatus ?? "").toLowerCase();
+          const status =
+            raw === "open" ? "connected" : raw === "connecting" ? "connecting" : "disconnected";
+          return { ok: true, status, phoneNumber: match.ownerJid };
+        }
+      }
+    }
+
+    return { ok: false, error: `Evolution API [${res.status}]` };
   } catch (e) {
     return { ok: false, error: `Evolution API: ${(e as Error).message}` };
   }

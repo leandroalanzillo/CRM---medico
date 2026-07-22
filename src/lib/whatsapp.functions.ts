@@ -60,9 +60,19 @@ export const checkWhatsAppStatus = createServerFn({ method: "POST" })
 
     const { getWhatsAppPairingStatus } = await import("@/lib/whatsapp.server");
     const result = await getWhatsAppPairingStatus(instanceName);
-    if (!result.ok) return { status: "error" as const };
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    if (!result.ok) {
+      // Leaving the row untouched here would keep showing a stale status
+      // (e.g. "Aguardando QR Code" forever) even though we now know
+      // something is actually wrong with the check itself.
+      await supabaseAdmin
+        .from("whatsapp_connections")
+        .update({ status: "error", updated_at: new Date().toISOString() })
+        .eq("clinic_id", clinicId);
+      return { status: "error" as const };
+    }
+
     await supabaseAdmin
       .from("whatsapp_connections")
       .update({
