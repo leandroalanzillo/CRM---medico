@@ -61,6 +61,17 @@ export async function startWhatsAppPairing(instanceName: string): Promise<EvoRes
           : `data:image/png;base64,${inlineQr}`;
         return { ok: true, qrCode, status: "awaiting_qr" };
       }
+    } else {
+      // Instance already existed (create failed/no-op) — if a previous QR
+      // was generated but never scanned (or expired), the instance can be
+      // left in a "half-connecting" state where /instance/connect stops
+      // returning a fresh QR. Logging out first resets it to a clean
+      // disconnected state so the next QR request actually gets a new code.
+      // Best-effort: ignore failures here (e.g. it was already logged out).
+      await fetch(`${baseUrl}/instance/logout/${instanceName}`, {
+        method: "DELETE",
+        headers: { apikey: apiKey! },
+      }).catch(() => null);
     }
 
     const res = await fetch(`${baseUrl}/instance/connect/${instanceName}`, {
@@ -73,7 +84,11 @@ export async function startWhatsAppPairing(instanceName: string): Promise<EvoRes
     }
     const data = (await res.json()) as { base64?: string; code?: string };
     if (!data.base64) {
-      return { ok: false, error: "QR Code não retornado pela Evolution API." };
+      return {
+        ok: false,
+        error:
+          "QR Code não retornado pela Evolution API mesmo após reiniciar a sessão. Aguarde alguns segundos e tente 'Gerar novo QR Code' de novo — se persistir, a instância pode precisar ser reiniciada direto no Railway.",
+      };
     }
     // Some Evolution API versions return the bare base64 payload without
     // the "data:image/png;base64," prefix an <img> tag needs — normalize
