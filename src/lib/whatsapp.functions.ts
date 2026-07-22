@@ -73,17 +73,34 @@ export const checkWhatsAppStatus = createServerFn({ method: "POST" })
       return { status: "error" as const };
     }
 
-    await supabaseAdmin
+    const { error: updateError } = await supabaseAdmin
       .from("whatsapp_connections")
       .update({
         status: result.status,
         phone_number: result.phoneNumber ?? null,
-        last_connected_at: result.status === "connected" ? new Date().toISOString() : undefined,
+        ...(result.status === "connected" ? { last_connected_at: new Date().toISOString() } : {}),
         updated_at: new Date().toISOString(),
       })
       .eq("clinic_id", clinicId);
 
-    return { status: result.status };
+    if (updateError) {
+      console.error("[checkWhatsAppStatus] DB update failed:", updateError.message);
+    }
+
+    // Re-read what's actually in the DB right now — this is what proves
+    // (or disproves) whether the write above really landed, instead of
+    // trusting that an update() call without a checked error succeeded.
+    const { data: persisted } = await supabaseAdmin
+      .from("whatsapp_connections")
+      .select("status")
+      .eq("clinic_id", clinicId)
+      .maybeSingle();
+
+    return {
+      status: result.status,
+      dbUpdateError: updateError?.message ?? null,
+      dbStatusAfterUpdate: persisted?.status ?? null,
+    };
   });
 
 /** Unlinks the device. */
