@@ -107,7 +107,10 @@ export function WhatsAppConnectDialog({
       if (pollRef.current) clearInterval(pollRef.current);
       return;
     }
+    const inFlight = { current: false };
     pollRef.current = setInterval(async () => {
+      if (inFlight.current) return; // a slower earlier tick is still running — skip this one instead of racing it
+      inFlight.current = true;
       try {
         const r = await doCheckStatus();
         console.log("[whatsapp-poll] checkWhatsAppStatus ->", r);
@@ -115,6 +118,15 @@ export function WhatsAppConnectDialog({
         if (r.status === "connected") {
           toast.success("WhatsApp conectado!");
           setQrCode(null);
+          // Update the cache directly instead of only invalidating — a
+          // slightly-delayed refetch landing after this tick could
+          // otherwise show stale data for a moment even though we just
+          // confirmed the real status.
+          queryClient.setQueryData(
+            ["wa-conn", clinic?.id],
+            (old: Record<string, unknown> | undefined) =>
+              old ? { ...old, status: "connected" } : old,
+          );
         }
         queryClient.invalidateQueries({ queryKey: ["wa-conn", clinic?.id] });
       } catch (e) {
@@ -122,6 +134,8 @@ export function WhatsAppConnectDialog({
         setLastPollResult(
           `ERRO às ${new Date().toLocaleTimeString("pt-BR")}: ${(e as Error).message}`,
         );
+      } finally {
+        inFlight.current = false;
       }
     }, 3000);
     return () => {
