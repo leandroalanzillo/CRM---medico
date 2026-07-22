@@ -103,7 +103,7 @@ export function WhatsAppConnectDialog({
   // flips to "Conectado" the moment the phone finishes pairing, with no
   // manual refresh needed.
   useEffect(() => {
-    if (!open || status === "connected" || status === "disconnected") {
+    if (!open || status === "connected") {
       if (pollRef.current) clearInterval(pollRef.current);
       return;
     }
