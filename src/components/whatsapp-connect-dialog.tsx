@@ -57,6 +57,7 @@ export function WhatsAppConnectDialog({
   const [loading, setLoading] = useState(false);
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastPollResult, setLastPollResult] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { data: connection } = useQuery({
@@ -78,6 +79,7 @@ export function WhatsAppConnectDialog({
     if (open) {
       setError(null);
       setQrCode(null);
+      setLastPollResult(null);
     }
   }, [open]);
 
@@ -108,13 +110,18 @@ export function WhatsAppConnectDialog({
     pollRef.current = setInterval(async () => {
       try {
         const r = await doCheckStatus();
+        console.log("[whatsapp-poll] checkWhatsAppStatus ->", r);
+        setLastPollResult(`OK às ${new Date().toLocaleTimeString("pt-BR")}: ${JSON.stringify(r)}`);
         if (r.status === "connected") {
           toast.success("WhatsApp conectado!");
           setQrCode(null);
         }
         queryClient.invalidateQueries({ queryKey: ["wa-conn", clinic?.id] });
-      } catch {
-        // transient poll failure — try again on the next tick
+      } catch (e) {
+        console.error("[whatsapp-poll] checkWhatsAppStatus threw:", e);
+        setLastPollResult(
+          `ERRO às ${new Date().toLocaleTimeString("pt-BR")}: ${(e as Error).message}`,
+        );
       }
     }, 3000);
     return () => {
@@ -177,6 +184,12 @@ export function WhatsAppConnectDialog({
           <p className="text-center text-xs text-muted-foreground">
             No celular: WhatsApp → Configurações → Aparelhos conectados → Conectar um aparelho.
           </p>
+
+          {status !== "connected" && lastPollResult && (
+            <p className="w-full break-all rounded bg-muted p-2 text-center text-[10px] text-muted-foreground">
+              Diagnóstico (última checagem): {lastPollResult}
+            </p>
+          )}
         </div>
 
         <DialogFooter className="sm:justify-center">
