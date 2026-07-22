@@ -7,17 +7,34 @@ async function assertAdminAndGetClinic(supabase: SupabaseClient<Database>) {
   const { data: userData } = await supabase.auth.getUser();
   const userId = userData.user?.id;
   if (!userId) throw new Error("Não autenticado.");
+
+  // profiles.clinic_id is the single, unambiguous source of truth for
+  // "which clinic does this user belong to" — unlike picking role[0],
+  // which silently breaks if the user ever ends up with more than one
+  // user_roles row (duplicates, leftover test data, etc.): Postgres
+  // doesn't guarantee row order without ORDER BY, so role[0] could
+  // resolve to a different clinic_id on every single call. That was
+  // causing connectWhatsApp() and checkWhatsAppStatus() to silently
+  // read/write two different whatsapp_connections rows.
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("clinic_id")
+    .eq("id", userId)
+    .maybeSingle();
+  const clinicId = profile?.clinic_id;
+  if (!clinicId) throw new Error("Clínica não encontrada.");
+
   const { data: roles } = await supabase
     .from("user_roles")
-    .select("role, clinic_id")
-    .eq("user_id", userId);
+    .select("role")
+    .eq("user_id", userId)
+    .eq("clinic_id", clinicId);
   const isAdmin = (roles ?? []).some(
     (r: { role: string }) => r.role === "admin" || r.role === "manager",
   );
   if (!isAdmin)
     throw new Error("Apenas administradores e gestores podem gerenciar a conexão do WhatsApp.");
-  const clinicId = roles?.[0]?.clinic_id;
-  if (!clinicId) throw new Error("Clínica não encontrada.");
+
   return clinicId as string;
 }
 
@@ -73,15 +90,17 @@ export const checkWhatsAppStatus = createServerFn({ method: "POST" })
       return { status: "error" as const };
     }
 
-    const { error: updateError } = await supabaseAdmin
-      .from("whatsapp_connections")
-      .update({
+    const { error: updateError } = await supabaseAdmin.from("whatsapp_connections").upsert(
+      {
+        clinic_id: clinicId,
+        instance_name: instanceName,
         status: result.status,
         phone_number: result.phoneNumber ?? null,
         ...(result.status === "connected" ? { last_connected_at: new Date().toISOString() } : {}),
         updated_at: new Date().toISOString(),
-      })
-      .eq("clinic_id", clinicId);
+      },
+      { onConflict: "clinic_id" },
+    );
 
     if (updateError) {
       console.error("[checkWhatsAppStatus] DB update failed:", updateError.message);
