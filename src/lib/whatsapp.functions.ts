@@ -134,10 +134,17 @@ export const disconnectWhatsAppConnection = createServerFn({ method: "POST" })
     await disconnectWhatsApp(instanceName);
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    await supabaseAdmin
-      .from("whatsapp_connections")
-      .update({ status: "disconnected", qr_code: null, updated_at: new Date().toISOString() })
-      .eq("clinic_id", clinicId);
+    await supabaseAdmin.from("whatsapp_connections").upsert(
+      {
+        clinic_id: clinicId,
+        instance_name: instanceName,
+        status: "disconnected",
+        qr_code: null,
+        phone_number: null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "clinic_id" },
+    );
 
     return { ok: true };
   });

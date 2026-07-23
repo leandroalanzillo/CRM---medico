@@ -181,16 +181,36 @@ export async function sendWhatsAppMessage(
     return { ok: false, error: `Evolution API: ${(e as Error).message}` };
   }
 }
+/**
+ * Fully disconnects AND deletes the instance, rather than only logging
+ * out. Evolution API v2.3.x has documented reliability issues with
+ * several /instance/* endpoints in this build (see the connectionState
+ * 404 workaround above) — /instance/logout alone was found to leave the
+ * underlying session alive in practice, so a "new" pairing attempt kept
+ * silently reconnecting the OLD number instead of offering a fresh QR
+ * for a different phone. Deleting the instance outright removes its
+ * session data entirely; the next "Gerar QR Code" recreates it from
+ * scratch via startWhatsAppPairing's create step.
+ */
 export async function disconnectWhatsApp(instanceName: string): Promise<EvoResponse> {
   const { baseUrl, apiKey, configured } = evoConfig();
   if (!configured) return { ok: false, error: "Evolution API não configurada." };
 
   try {
-    const res = await fetch(`${baseUrl}/instance/logout/${instanceName}`, {
+    // Best-effort logout first (in case delete alone leaves an orphaned
+    // active session on some builds) — ignore its result either way.
+    await fetch(`${baseUrl}/instance/logout/${instanceName}`, {
+      method: "DELETE",
+      headers: { apikey: apiKey! },
+    }).catch(() => null);
+
+    const res = await fetch(`${baseUrl}/instance/delete/${instanceName}`, {
       method: "DELETE",
       headers: { apikey: apiKey! },
     });
-    return { ok: res.ok, status: "disconnected" };
+    // A 404 here just means the instance was already gone — that still
+    // counts as "successfully disconnected" from the user's perspective.
+    return { ok: res.ok || res.status === 404, status: "disconnected" };
   } catch (e) {
     return { ok: false, error: `Evolution API: ${(e as Error).message}` };
   }
