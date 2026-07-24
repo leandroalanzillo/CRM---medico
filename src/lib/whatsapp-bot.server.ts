@@ -13,6 +13,9 @@ import type { Database } from "@/integrations/supabase/types";
 const ANTHROPIC_MODEL = process.env.WHATSAPP_BOT_MODEL || "claude-sonnet-5";
 const MAX_TURNS = 24; // safety cap: force a human handoff instead of looping forever
 
+const LGPD_NOTICE =
+  "🔒 Antes de continuar: seus dados (nome, telefone e o motivo do seu contato) serão usados só para agendar seu atendimento nesta clínica, conforme a LGPD. Se preferir, pode pedir para falar com um atendente humano a qualquer momento.";
+
 const SYSTEM_PROMPT = `Você é o assistente virtual de atendimento via WhatsApp de uma clínica médica. Converse como uma recepcionista bem treinada: cordial, natural, direto — nunca como um menu de robô ("responda 1, 2 ou 3").
 
 Seu objetivo, na ordem que fizer sentido conforme a conversa:
@@ -244,7 +247,9 @@ export async function handleInboundWhatsAppMessage(params: {
     content: m.body,
   }));
 
-  const { text, toolCalls } = await callClaude(history);
+  const claudeResult = await callClaude(history);
+  let text = claudeResult.text;
+  const { toolCalls } = claudeResult;
 
   let shouldFinish = false;
   let createLead = false;
@@ -260,6 +265,14 @@ export async function handleInboundWhatsAppMessage(params: {
       shouldFinish = true;
       createLead = !!call.input.create_lead;
     }
+  }
+
+  // LGPD Art. 9: the person must be told, at the point data is collected,
+  // what it's for — not buried in a policy nobody reads. This is
+  // deterministic (not left to the model to remember) since it's a
+  // compliance requirement, not a stylistic choice.
+  if (state.turns === 1) {
+    text = `${LGPD_NOTICE}\n\n${text}`;
   }
 
   await supabaseAdmin

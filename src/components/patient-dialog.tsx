@@ -56,6 +56,10 @@ const empty = {
   insurance_card: "",
   emergency_contact: "",
   active: true,
+  consent: false,
+  consent_notes: "",
+  legal_guardian_name: "",
+  legal_guardian_cpf: "",
 };
 
 export function PatientDialog({
@@ -99,6 +103,10 @@ export function PatientDialog({
               insurance_card: patient.insurance_card ?? "",
               emergency_contact: patient.emergency_contact ?? "",
               active: patient.active ?? true,
+              consent: !!patient.consent_at,
+              consent_notes: patient.consent_notes ?? "",
+              legal_guardian_name: patient.legal_guardian_name ?? "",
+              legal_guardian_cpf: patient.legal_guardian_cpf ?? "",
             }
           : empty,
       );
@@ -113,6 +121,15 @@ export function PatientDialog({
     if (form.full_name.trim().length < 2) return toast.error("Informe o nome completo.");
     if (!isValidCPF(form.cpf)) return toast.error("CPF inválido. Confira os números digitados.");
     if (!isValidEmail(form.email)) return toast.error("E-mail inválido.");
+
+    const isMinor = form.birth_date
+      ? new Date().getFullYear() - new Date(form.birth_date).getFullYear() < 18
+      : false;
+    if (isMinor && form.consent && !form.legal_guardian_name.trim()) {
+      return toast.error(
+        "Paciente menor de idade: o nome do responsável legal é obrigatório para registrar o consentimento (LGPD/ECA).",
+      );
+    }
 
     setLoading(true);
 
@@ -150,6 +167,10 @@ export function PatientDialog({
       insurance: form.insurance || null,
       insurance_card: form.insurance_card || null,
       emergency_contact: form.emergency_contact || null,
+      consent_at: form.consent ? (patient?.consent_at ?? new Date().toISOString()) : null,
+      consent_notes: form.consent_notes || null,
+      legal_guardian_name: form.legal_guardian_name || null,
+      legal_guardian_cpf: form.legal_guardian_cpf || null,
       active: form.active,
     };
 
@@ -386,6 +407,50 @@ export function PatientDialog({
             <Label>Observações administrativas</Label>
             <Textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} />
           </div>
+
+          {(() => {
+            const isMinor = form.birth_date
+              ? new Date().getFullYear() - new Date(form.birth_date).getFullYear() < 18
+              : false;
+            return (
+              <div className="space-y-3 rounded-lg border p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-sm">Consentimento LGPD registrado</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {form.consent
+                        ? patient?.consent_at
+                          ? `Consentimento em ${new Date(patient.consent_at).toLocaleDateString("pt-BR")}.`
+                          : "Será registrado com a data/hora de hoje ao salvar."
+                        : "Sem consentimento registrado — dado de saúde exige base legal explícita."}
+                    </p>
+                  </div>
+                  <Switch checked={form.consent} onCheckedChange={(v) => set("consent", v)} />
+                </div>
+                {isMinor && (
+                  <div className="grid gap-3 border-t pt-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label className="text-xs">
+                        Nome do responsável legal {form.consent && "*"}
+                      </Label>
+                      <Input
+                        value={form.legal_guardian_name}
+                        onChange={(e) => set("legal_guardian_name", e.target.value)}
+                        placeholder="Obrigatório para menores de idade"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs">CPF do responsável legal</Label>
+                      <Input
+                        value={form.legal_guardian_cpf}
+                        onChange={(e) => set("legal_guardian_cpf", e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {patient && (
             <div className="flex items-center justify-between rounded-lg border p-3">

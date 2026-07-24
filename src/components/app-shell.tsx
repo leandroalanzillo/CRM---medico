@@ -30,6 +30,7 @@ import {
   Table2,
   Wallet,
   ShieldPlus,
+  ShieldAlert,
   UserCog,
   AlertTriangle,
   X,
@@ -45,6 +46,7 @@ const NAV = [
   { to: "/convenios", label: "Convênios", icon: ShieldPlus },
   { to: "/colaboradores", label: "Colaboradores", icon: UserCog },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
+  { to: "/auditoria", label: "Auditoria", icon: ShieldAlert },
   { to: "/configuracoes", label: "Configurações", icon: Settings },
 ] as const;
 

@@ -40,6 +40,7 @@ import {
   DatabaseBackup,
 } from "lucide-react";
 import { NotificationSettings } from "@/components/notification-settings";
+import { LgpdSettings } from "@/components/lgpd-settings";
 import {
   Select,
   SelectContent,
@@ -254,6 +255,7 @@ function ConfigPage() {
           <TabsTrigger value="procedures">Procedimentos</TabsTrigger>
           <TabsTrigger value="users">Permissões</TabsTrigger>
           <TabsTrigger value="notifications">Notificações</TabsTrigger>
+          <TabsTrigger value="lgpd">Privacidade (LGPD)</TabsTrigger>
         </TabsList>
 
         <TabsContent value="team">
@@ -467,6 +469,10 @@ function ConfigPage() {
 
         <TabsContent value="notifications">
           <NotificationSettings />
+        </TabsContent>
+
+        <TabsContent value="lgpd">
+          <LgpdSettings />
         </TabsContent>
       </Tabs>
 

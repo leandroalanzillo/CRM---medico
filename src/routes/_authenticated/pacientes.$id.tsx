@@ -169,6 +169,10 @@ function PatientProfile() {
     ]);
     const bundle = {
       exportado_em: new Date().toISOString(),
+      encarregado_de_dados: {
+        nome: clinic.dpo_name ?? null,
+        contato: clinic.dpo_contact ?? null,
+      },
       paciente: patient,
       agendamentos: appointments,
       prontuario: meds.data ?? null,
