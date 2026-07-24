@@ -30,7 +30,8 @@ export const runAppointmentAutomation = createServerFn({ method: "POST" })
 
     if (data.newStatus === "finished") {
       const { autoCreateRevenueOnFinish } = await import("@/lib/automations.server");
-      await autoCreateRevenueOnFinish(appt);
+      const result = await autoCreateRevenueOnFinish(appt);
+      return { ok: true, revenue: result };
     } else if (data.newStatus === "cancelled" || data.newStatus === "no_show") {
       const { notifyWaitlistOnCancellation } = await import("@/lib/automations.server");
       await notifyWaitlistOnCancellation(appt);

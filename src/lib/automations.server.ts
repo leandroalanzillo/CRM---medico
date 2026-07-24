@@ -23,11 +23,13 @@ export async function autoCreateRevenueOnFinish(appointment: {
   procedure_id: string | null;
   produced_value: number | null;
   starts_at: string;
-}) {
+}): Promise<{ created: boolean; reason?: string }> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
   // Already has a value (set manually, or this ran before) — nothing to do.
-  if (appointment.produced_value && appointment.produced_value > 0) return;
+  if (appointment.produced_value && appointment.produced_value > 0) {
+    return { created: false, reason: "Este agendamento já tinha um valor de produção definido." };
+  }
 
   let amount = 0;
   if (appointment.procedure_id) {
@@ -38,7 +40,20 @@ export async function autoCreateRevenueOnFinish(appointment: {
       .maybeSingle();
     amount = Number(proc?.default_price ?? 0);
   }
-  if (amount <= 0) return; // no procedure/price to bill — nothing meaningful to log
+  if (!appointment.procedure_id) {
+    return {
+      created: false,
+      reason:
+        "Nenhum procedimento selecionado nesse agendamento — sem procedimento não há preço para gerar a receita automaticamente.",
+    };
+  }
+  if (amount <= 0) {
+    return {
+      created: false,
+      reason:
+        "O procedimento selecionado tem preço R$ 0,00 cadastrado — ajuste o preço em Configurações → Procedimentos, ou lance a receita manualmente em Financeiro.",
+    };
+  }
 
   await supabaseAdmin
     .from("appointments")
@@ -54,7 +69,12 @@ export async function autoCreateRevenueOnFinish(appointment: {
     .eq("professional_id", appointment.professional_id ?? "")
     .eq("due_date", appointment.starts_at.slice(0, 10))
     .eq("amount", amount);
-  if ((count ?? 0) > 0) return;
+  if ((count ?? 0) > 0) {
+    return {
+      created: false,
+      reason: "Já existe um lançamento equivalente para este paciente/dia/valor.",
+    };
+  }
 
   const { data: category } = await supabaseAdmin
     .from("financial_categories")
@@ -86,6 +106,8 @@ export async function autoCreateRevenueOnFinish(appointment: {
     professional_id: appointment.professional_id,
     notes: "Criado automaticamente ao finalizar o atendimento.",
   });
+
+  return { created: true };
 }
 
 /**

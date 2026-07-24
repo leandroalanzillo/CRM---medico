@@ -285,7 +285,13 @@ function PlanilhaPage() {
       ) {
         runAutomation({
           data: { appointmentId: row.id, newStatus: row.status as "finished" | "cancelled" },
-        }).catch((e) => console.error("[automation] failed:", (e as Error).message));
+        })
+          .then((r) => {
+            if (r.revenue && !r.revenue.created && r.revenue.reason) {
+              toast.warning(r.revenue.reason, { duration: 8000 });
+            }
+          })
+          .catch((e) => toast.error(`Automação falhou: ${(e as Error).message}`));
       }
     }
     toast.success("Salvo.");

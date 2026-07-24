@@ -138,8 +138,17 @@ function AgendaPage() {
     toast.success("Status atualizado.");
     if (next === "finished") {
       runAutomation({ data: { appointmentId: a.id, newStatus: "finished" } })
-        .then(() => queryClient.invalidateQueries())
-        .catch((e) => console.error("[automation] revenue auto-log failed:", (e as Error).message));
+        .then((r) => {
+          queryClient.invalidateQueries();
+          if (r.revenue && !r.revenue.created && r.revenue.reason) {
+            toast.warning(r.revenue.reason, { duration: 8000 });
+          }
+        })
+        .catch((e) =>
+          toast.error(
+            `Não foi possível registrar a receita automaticamente: ${(e as Error).message}`,
+          ),
+        );
     }
   }
 

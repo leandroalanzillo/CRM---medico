@@ -32,9 +32,44 @@ const ACTION_LABELS: Record<string, { label: string; className: string }> = {
   lgpd_erase: { label: "Apagamento LGPD", className: "bg-destructive/15 text-destructive" },
 };
 
+const RESOURCE_LABELS: Record<string, string> = {
+  patient: "Paciente",
+  professional: "Profissional",
+  procedure: "Procedimento",
+  appointment: "Agendamento",
+  financial_transaction: "Lançamento financeiro",
+  negotiation: "Negociação",
+  insurance_provider: "Convênio",
+  waitlist: "Lista de espera",
+  user_role: "Permissão de usuário",
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  status: "status",
+  amount: "valor",
+  description: "descrição",
+  full_name: "nome",
+  active: "ativo",
+};
+
+/** Turns { status: "paid" } into "status: paid" — readable at a glance,
+ * instead of raw, unformatted JSON. */
+function summarizeChanges(changes: unknown): string {
+  if (!changes || typeof changes !== "object") return "—";
+  const entries = Object.entries(changes as Record<string, unknown>);
+  if (entries.length === 0) return "—";
+  return entries
+    .slice(0, 4)
+    .map(
+      ([k, v]) =>
+        `${FIELD_LABELS[k] ?? k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`,
+    )
+    .join(" · ");
+}
+
 function AuditoriaPage() {
   const { clinic, hasRole } = useApp();
-  const isAdmin = hasRole("admin", "manager");
+  const isAdmin = hasRole("admin");
   const [search, setSearch] = useState("");
 
   const { data: logs, isLoading: loadingLogs } = useQuery({
@@ -187,10 +222,13 @@ function AuditoriaPage() {
                             <Badge className={meta.className}>{meta.label}</Badge>
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
-                            {l.resource_type}
+                            {RESOURCE_LABELS[l.resource_type] ?? l.resource_type}
                           </TableCell>
-                          <TableCell className="max-w-xs truncate text-xs text-muted-foreground">
-                            {l.changes ? JSON.stringify(l.changes) : "—"}
+                          <TableCell
+                            className="max-w-xs truncate text-xs text-muted-foreground"
+                            title={summarizeChanges(l.changes)}
+                          >
+                            {summarizeChanges(l.changes)}
                           </TableCell>
                         </TableRow>
                       );
@@ -234,7 +272,9 @@ function AuditoriaPage() {
                           {(a.patient as { full_name: string } | null)?.full_name ?? "—"}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline">{a.action}</Badge>
+                          <Badge variant="outline">
+                            {a.action === "view_record" ? "Visualizou prontuário" : a.action}
+                          </Badge>
                         </TableCell>
                       </TableRow>
                     ))}
