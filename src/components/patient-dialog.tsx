@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useApp } from "@/lib/app-context";
-import { useProfessionals } from "@/lib/hooks";
+import { useProfessionals, useProcedures } from "@/lib/hooks";
 import { addTimeline, addAudit } from "@/lib/crm";
 import { formatCPF, formatPhone, isValidCPF, isValidEmail } from "@/lib/validators";
 import type { Database } from "@/integrations/supabase/types";
@@ -47,6 +47,7 @@ const empty = {
   birth_date: "",
   source: "",
   professional_id: "",
+  preferred_procedure_id: "",
   notes: "",
   kind: "lead" as "lead" | "patient",
   address: "",
@@ -71,6 +72,7 @@ export function PatientDialog({
 }) {
   const { clinic, userId } = useApp();
   const { data: professionals } = useProfessionals(clinic?.id);
+  const { data: procedures } = useProcedures(clinic?.id);
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState(empty);
@@ -88,6 +90,7 @@ export function PatientDialog({
               birth_date: patient.birth_date ?? "",
               source: patient.source ?? "",
               professional_id: patient.professional_id ?? "",
+              preferred_procedure_id: patient.preferred_procedure_id ?? "",
               notes: patient.notes ?? "",
               kind: patient.kind,
               address: patient.address ?? "",
@@ -139,6 +142,7 @@ export function PatientDialog({
       birth_date: form.birth_date || null,
       source: form.source || null,
       professional_id: form.professional_id || null,
+      preferred_procedure_id: form.preferred_procedure_id || null,
       notes: form.notes || null,
       kind: form.kind,
       address: form.address || null,
@@ -291,6 +295,24 @@ export function PatientDialog({
                 </SelectTrigger>
                 <SelectContent>
                   {professionals?.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Procedimento de interesse</Label>
+              <Select
+                value={form.preferred_procedure_id}
+                onValueChange={(v) => set("preferred_procedure_id", v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione" />
+                </SelectTrigger>
+                <SelectContent>
+                  {procedures?.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.name}
                     </SelectItem>

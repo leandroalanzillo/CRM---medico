@@ -908,6 +908,7 @@ export type Database = {
           insurance_card: string | null;
           insurance_provider_id: string | null;
           kind: Database["public"]["Enums"]["patient_kind"];
+          preferred_procedure_id: string | null;
           last_contact_at: string | null;
           notes: string | null;
           occupation: string | null;
@@ -933,6 +934,7 @@ export type Database = {
           insurance_card?: string | null;
           insurance_provider_id?: string | null;
           kind?: Database["public"]["Enums"]["patient_kind"];
+          preferred_procedure_id?: string | null;
           last_contact_at?: string | null;
           notes?: string | null;
           occupation?: string | null;
@@ -958,6 +960,7 @@ export type Database = {
           insurance_card?: string | null;
           insurance_provider_id?: string | null;
           kind?: Database["public"]["Enums"]["patient_kind"];
+          preferred_procedure_id?: string | null;
           last_contact_at?: string | null;
           notes?: string | null;
           occupation?: string | null;
@@ -987,6 +990,13 @@ export type Database = {
             columns: ["insurance_provider_id"];
             isOneToOne: false;
             referencedRelation: "insurance_providers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "patients_preferred_procedure_id_fkey";
+            columns: ["preferred_procedure_id"];
+            isOneToOne: false;
+            referencedRelation: "procedures";
             referencedColumns: ["id"];
           },
         ];

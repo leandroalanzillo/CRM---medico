@@ -43,6 +43,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Wallet,
   TrendingUp,
   TrendingDown,
@@ -53,6 +63,7 @@ import {
   Pencil,
   Receipt,
   FileSpreadsheet,
+  Trash2,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/financeiro")({ component: FinanceiroPage });
@@ -239,6 +250,34 @@ function FinanceiroPage() {
     });
     queryClient.invalidateQueries({ queryKey: ["financial-transactions"] });
     toast.success("Lançamento cancelado.");
+  }
+
+  const [deleteTarget, setDeleteTarget] = useState<TxRow | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
+  async function confirmDelete() {
+    if (!clinic || !deleteTarget) return;
+    setDeleteBusy(true);
+    const { error } = await supabase
+      .from("financial_transactions")
+      .delete()
+      .eq("id", deleteTarget.id);
+    setDeleteBusy(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    await addAudit({
+      clinicId: clinic.id,
+      userId,
+      action: "delete",
+      resourceType: "financial_transaction",
+      resourceId: deleteTarget.id,
+      changes: { description: deleteTarget.description, amount: deleteTarget.amount },
+    });
+    queryClient.invalidateQueries({ queryKey: ["financial-transactions"] });
+    toast.success("Lançamento excluído.");
+    setDeleteTarget(null);
   }
 
   function openCreate(type: "income" | "expense") {
@@ -480,6 +519,7 @@ function FinanceiroPage() {
             }}
             onMarkPaid={markPaid}
             onCancel={cancelTx}
+            onDelete={setDeleteTarget}
           />
         </TabsContent>
 
@@ -496,6 +536,7 @@ function FinanceiroPage() {
             }}
             onMarkPaid={markPaid}
             onCancel={cancelTx}
+            onDelete={setDeleteTarget}
           />
         </TabsContent>
       </Tabs>
@@ -506,6 +547,28 @@ function FinanceiroPage() {
         transaction={editing}
         defaultType={newType}
       />
+
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(v) => !v && !deleteBusy && setDeleteTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir lançamento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              "{deleteTarget?.description}" ({deleteTarget && brl(deleteTarget.amount)}) será
+              excluído permanentemente — diferente de "Cancelar", que só muda o status. Essa ação
+              não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteBusy}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction disabled={deleteBusy} onClick={confirmDelete}>
+              {deleteBusy ? "Excluindo..." : "Excluir"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -821,6 +884,7 @@ function TransactionsTable({
   onEdit,
   onMarkPaid,
   onCancel,
+  onDelete,
 }: {
   rows: TxRow[];
   loading: boolean;
@@ -829,6 +893,7 @@ function TransactionsTable({
   onEdit: (r: TxRow) => void;
   onMarkPaid: (r: TxRow) => void;
   onCancel: (r: TxRow) => void;
+  onDelete: (r: TxRow) => void;
 }) {
   const [filter, setFilter] = useState("all");
   const filtered = rows.filter((r) => filter === "all" || r.status === filter);
@@ -934,6 +999,15 @@ function TransactionsTable({
                           onClick={() => onEdit(r)}
                         >
                           <Pencil className="size-4 text-muted-foreground" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-8"
+                          title="Excluir"
+                          onClick={() => onDelete(r)}
+                        >
+                          <Trash2 className="size-4 text-destructive" />
                         </Button>
                       </div>
                     </TableCell>

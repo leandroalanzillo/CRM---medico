@@ -94,7 +94,7 @@ function PatientProfile() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("patients")
-        .select("*, professional:professionals(name, color)")
+        .select("*, professional:professionals(name, color), preferred_procedure:procedures(name)")
         .eq("id", id)
         .single();
       if (error) throw error;
@@ -394,6 +394,7 @@ function PatientProfile() {
               <Field label="E-mail" value={patient.email} />
               <Field label="WhatsApp" value={patient.whatsapp} />
               <Field label="Convênio" value={patient.insurance} />
+              <Field label="Procedimento de interesse" value={patient.preferred_procedure?.name} />
               <Field label="Carteirinha" value={patient.insurance_card} />
               <Field label="Profissão" value={patient.occupation} />
               <Field label="Contato emergência" value={patient.emergency_contact} />
